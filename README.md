@@ -59,7 +59,12 @@ tests/HikvisionSqlBridge.Tests   Testes unitários
 ## Configuração
 
 1. Copiar `config.sample.json` para `config.json` (fica ao lado do executável).
-2. Preencher a ligação ao SQL Server e a lista de equipamentos.
+2. Preencher a ligação ao SQL Server e a lista de equipamentos. Há duas formas
+   de indicar o SQL Server:
+   - por campos (`Server`, `Database`, `User`/`Password` ou `UseWindowsAuth`); ou
+   - colando uma connection string completa em `ConnectionString` (se preenchida,
+     é usada tal e qual — ex.: a mesma que o bevotech usa,
+     `Data Source=DESKTOP-S8CKGL7\SQL;Initial Catalog=SPBA1;User Id=sa;Password=...;MultipleActiveResultSets=True`).
 3. Na versão final, uma janela de configuração faz isto graficamente (ao estilo
    da janela de "Propriedades de ligação de dados" do Windows), com botão de
    "Testar ligação".

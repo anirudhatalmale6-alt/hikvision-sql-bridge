@@ -23,6 +23,15 @@ public sealed class AppConfig
 /// </summary>
 public sealed class SqlServerConfig
 {
+    /// <summary>
+    /// Opcional. Se for preenchido, é usado tal e qual (permite colar
+    /// directamente uma connection string completa, ex.: a que o bevotech usa:
+    /// "Data Source=DESKTOP-S8CKGL7\\SQL;Initial Catalog=SPBA1;User Id=sa;Password=...;
+    /// MultipleActiveResultSets=True"). Se ficar vazio, a ligação é montada a
+    /// partir dos campos abaixo.
+    /// </summary>
+    public string? ConnectionString { get; set; }
+
     public string Server { get; set; } = "";
     public string Database { get; set; } = "Assiduidadev3";
     public string Table { get; set; } = "TG_MOVIMENTOS";
@@ -39,12 +48,17 @@ public sealed class SqlServerConfig
 
     public string BuildConnectionString()
     {
+        // Se o cliente colou uma connection string completa, usamo-la tal e qual.
+        if (!string.IsNullOrWhiteSpace(ConnectionString))
+            return ConnectionString;
+
         var b = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder
         {
             DataSource = Server,
             InitialCatalog = Database,
             TrustServerCertificate = TrustServerCertificate,
             ConnectTimeout = ConnectTimeoutSeconds,
+            MultipleActiveResultSets = true,
         };
 
         if (UseWindowsAuth)

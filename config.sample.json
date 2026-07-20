@@ -1,10 +1,11 @@
 {
   "SqlServer": {
-    "Server": "srvcmasql3\\SQLEXPRESS",
-    "Database": "Assiduidadev3",
+    "ConnectionString": "",
+    "Server": "DESKTOP-S8CKGL7\\SQL",
+    "Database": "SPBA1",
     "Table": "TG_MOVIMENTOS",
     "UseWindowsAuth": false,
-    "User": "bevotech",
+    "User": "sa",
     "Password": "AQUI_A_PASSWORD",
     "TrustServerCertificate": true,
     "ConnectTimeoutSeconds": 15
