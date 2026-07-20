@@ -7,8 +7,19 @@ grava-as numa base de dados SQL Server (por omissão `Assiduidadev3` → tabela
 
 O iVMS-4200 continua a ser usado normalmente para gerir utilizadores e inscrever
 impressão digital / Face ID. Este serviço corre em paralelo, sem interferir com
-o iVMS: liga-se directamente ao terminal pelo canal de eventos **ISAPI**
-(long-polling), que suporta várias ligações em simultâneo.
+o iVMS: lê as picagens directamente do terminal por **ISAPI**.
+
+## Modos de leitura das picagens
+
+Por cada terminal escolhe-se, na configuração, como o serviço obtém as picagens:
+
+- **`poll`** (por omissão) — consulta periódica à API `AcsEvent`
+  (`/ISAPI/AccessControl/AcsEvent`), o mesmo mecanismo que a própria página web
+  do terminal usa na lista "Pesquisa de evento". É o mais fiável e funciona em
+  **qualquer** produto Hikvision, incluindo os terminais faciais que não enviam
+  eventos por streaming. Intervalo configurável (`PollIntervalSeconds`).
+- **`stream`** — escuta o canal `alertStream` (long-polling). Mais imediato, mas
+  nem todos os modelos empurram os eventos de acesso por aqui.
 
 ## Características
 

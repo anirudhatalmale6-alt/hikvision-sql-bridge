@@ -28,7 +28,71 @@ public sealed class DeviceListener
         _log = log;
     }
 
-    public async Task RunAsync(CancellationToken ct)
+    public Task RunAsync(CancellationToken ct)
+        => _device.IsPollMode ? RunPollAsync(ct) : RunStreamAsync(ct);
+
+    /// <summary>
+    /// Modo por consulta (AcsEvent): pergunta ao terminal, de X em X segundos,
+    /// que picagens houve, e grava as novas. Funciona em qualquer produto
+    /// Hikvision. Cada picagem só é gravada uma vez (dedupe por serialNo).
+    /// </summary>
+    private async Task RunPollAsync(CancellationToken ct)
+    {
+        var interval = TimeSpan.FromSeconds(Math.Max(1, _device.PollIntervalSeconds));
+        _log.Info($"Terminal {_device.DisplayName}: modo consulta (AcsEvent) a cada {interval.TotalSeconds:0}s. A aguardar picagens...");
+
+        // Só nos interessam picagens a partir do arranque do serviço.
+        var since = DateTimeOffset.Now;
+        long lastSerial = -1;
+        var backoff = MinBackoff;
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                using var client = new HikvisionAcsEventClient(_device, _log);
+                var now = DateTimeOffset.Now;
+
+                // Sobreposição de alguns segundos para não perder picagens na fronteira.
+                var start = since.AddSeconds(-10);
+                var events = await client.QueryAsync(start, now.AddSeconds(5), ct);
+
+                foreach (var ev in events.OrderBy(e => ParseSerial(e.SerialNo)))
+                {
+                    var serial = ParseSerial(ev.SerialNo);
+                    if (serial <= lastSerial) continue; // já tratada
+                    await HandleEventAsync(ev);
+                    lastSerial = serial;
+                }
+
+                since = now;
+                backoff = MinBackoff; // consulta correu bem
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Terminal {_device.DisplayName}: {ex.Message}. Nova tentativa em {backoff.TotalSeconds:0}s.");
+                try { await Task.Delay(backoff, ct); } catch (OperationCanceledException) { break; }
+                backoff = TimeSpan.FromSeconds(Math.Min(MaxBackoff.TotalSeconds, backoff.TotalSeconds * 2));
+                continue;
+            }
+
+            try { await Task.Delay(interval, ct); }
+            catch (OperationCanceledException) { break; }
+        }
+
+        _log.Info($"Listener do terminal {_device.DisplayName} parado.");
+    }
+
+    // serialNo é numérico e crescente no Hikvision; usamo-lo para não repetir picagens.
+    private static long ParseSerial(string? serial)
+        => long.TryParse(serial, out var n) ? n : -1;
+
+    /// <summary>Modo por streaming (ISAPI alertStream) — mais imediato mas nem todos os modelos o suportam.</summary>
+    private async Task RunStreamAsync(CancellationToken ct)
     {
         var backoff = MinBackoff;
 

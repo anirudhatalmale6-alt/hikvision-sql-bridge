@@ -107,6 +107,24 @@ public sealed class DeviceConfig
     public string User { get; set; } = "admin";
     public string Password { get; set; } = "";
 
+    /// <summary>
+    /// Como o serviço obtém as picagens do terminal:
+    /// "poll"   = consulta periódica à API AcsEvent (como a própria página web do
+    ///            terminal) — fiável e funciona em qualquer produto Hikvision,
+    ///            incluindo os terminais faciais que não empurram eventos. (por omissão)
+    /// "stream" = escuta o canal ISAPI alertStream (long-polling) — mais imediato,
+    ///            mas nem todos os modelos enviam eventos por aqui.
+    /// </summary>
+    public string Mode { get; set; } = "poll";
+
+    /// <summary>Intervalo (segundos) entre consultas no modo "poll".</summary>
+    public int PollIntervalSeconds { get; set; } = 3;
+
+    /// <summary>Timeout (segundos) dos pedidos HTTP no modo "poll".</summary>
+    public int HttpTimeoutSeconds { get; set; } = 15;
+
+    public bool IsPollMode => !string.Equals(Mode, "stream", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Base do URL do equipamento (http://ip:porta), calculada a partir dos campos acima.</summary>
     public string BaseUrl => $"{(UseHttps ? "https" : "http")}://{Ip}:{Port}";
 

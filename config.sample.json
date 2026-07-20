@@ -18,7 +18,9 @@
       "Port": 80,
       "UseHttps": false,
       "User": "admin",
-      "Password": "AQUI_A_PASSWORD"
+      "Password": "AQUI_A_PASSWORD",
+      "Mode": "poll",
+      "PollIntervalSeconds": 3
     },
     {
       "Name": "Porta Traseira",
