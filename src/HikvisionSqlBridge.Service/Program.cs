@@ -1,4 +1,5 @@
 using System.Text.Json;
+using HikvisionSqlBridge.Core;
 using HikvisionSqlBridge.Core.Configuration;
 using HikvisionSqlBridge.Core.Data;
 using HikvisionSqlBridge.Core.Diagnostics;
@@ -25,6 +26,10 @@ if (args.Length > 0)
             // --simulate <employeeNo> [metodo]
             // metodo: card | fp | face | pin | nfc | qr | plate  (por omissão: face)
             return await RunSimulate(appConfig, args);
+
+        case "--sync-users":
+            // Fase 2: lê os utilizadores dos terminais e grava/atualiza no SQL.
+            return await RunSyncUsers(appConfig);
 
         case "--help":
         case "-h":
@@ -104,6 +109,26 @@ static async Task<int> RunSimulate(AppConfig cfg, string[] args)
     return 1;
 }
 
+static async Task<int> RunSyncUsers(AppConfig cfg)
+{
+    var log = new ConsoleAppLogger();
+    if (cfg.Equipamentos.Count == 0)
+    {
+        Console.WriteLine("Nenhum terminal configurado na secção Equipamentos.");
+        return 2;
+    }
+
+    var repo = new UserSyncRepository(cfg.SqlServer, cfg.UserSync, log);
+    var sync = new UserSyncService(cfg, repo, log);
+
+    Console.WriteLine("A ler os utilizadores dos terminais e a gravar no SQL...");
+    Console.WriteLine($"  Funcionários  -> {cfg.UserSync.FuncionariosTable}");
+    Console.WriteLine($"  Identificadores -> {cfg.UserSync.IdentificadoresTable}");
+    var n = await sync.SyncOnceAsync(CancellationToken.None);
+    Console.WriteLine($"Concluído. {n} utilizador(es) sincronizado(s).");
+    return 0;
+}
+
 static VerifyMethod ParseMethod(string s) => s.ToLowerInvariant() switch
 {
     "card" or "rfid" => VerifyMethod.Card,
@@ -126,6 +151,7 @@ static void PrintHelp()
     Console.WriteLine("  --test-connection            Testa a ligação ao SQL Server e sai.");
     Console.WriteLine("  --simulate <nº> [metodo]     Insere uma picagem de teste (sem terminal).");
     Console.WriteLine("                               metodo: card|fp|face|pin|nfc|qr|plate");
+    Console.WriteLine("  --sync-users                 Lê os utilizadores dos terminais e grava no SQL.");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
 }
 

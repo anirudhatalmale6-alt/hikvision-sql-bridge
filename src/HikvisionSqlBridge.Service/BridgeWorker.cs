@@ -38,12 +38,21 @@ public sealed class BridgeWorker : BackgroundService
             return;
         }
 
-        var listeners = _config.Equipamentos
+        var tasks = _config.Equipamentos
             .Select(d => new DeviceListener(d, repo, _log).RunAsync(stoppingToken))
-            .ToArray();
+            .ToList();
 
-        _log.Info($"{listeners.Length} terminal(is) em escuta.");
-        await Task.WhenAll(listeners);
+        _log.Info($"{tasks.Count} terminal(is) em escuta.");
+
+        // Fase 2: sincronização automática dos utilizadores (se ligada).
+        if (_config.UserSync.Enabled)
+        {
+            var syncRepo = new UserSyncRepository(_config.SqlServer, _config.UserSync, _log);
+            var sync = new UserSyncService(_config, syncRepo, _log);
+            tasks.Add(sync.RunAsync(stoppingToken));
+        }
+
+        await Task.WhenAll(tasks);
 
         _log.Info("=== Serviço terminado ===");
     }

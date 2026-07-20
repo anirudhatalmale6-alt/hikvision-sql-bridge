@@ -13,6 +13,29 @@ public sealed class AppConfig
     public List<DeviceConfig> Equipamentos { get; set; } = new();
 
     public LoggingConfig Logging { get; set; } = new();
+
+    /// <summary>Sincronização automática dos utilizadores (iVMS -> SQL). Fase 2.</summary>
+    public UserSyncConfig UserSync { get; set; } = new();
+}
+
+/// <summary>
+/// Configuração da sincronização de utilizadores (Fase 2). Quando ligada, o
+/// serviço lê periodicamente os utilizadores inscritos nos terminais e cria/
+/// atualiza a ficha em TG_FUNCIONARIOS e os identificadores em TA_IDENTIFICADORES.
+/// </summary>
+public sealed class UserSyncConfig
+{
+    /// <summary>Ligar/desligar a sincronização de utilizadores.</summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>Intervalo (minutos) entre sincronizações.</summary>
+    public int IntervalMinutes { get; set; } = 5;
+
+    public string FuncionariosTable { get; set; } = "TG_FUNCIONARIOS";
+    public string IdentificadoresTable { get; set; } = "TA_IDENTIFICADORES";
+
+    /// <summary>Anos de validade por omissão (fim = início + este valor), quando o terminal não indica.</summary>
+    public int ValidityYears { get; set; } = 10;
 }
 
 /// <summary>

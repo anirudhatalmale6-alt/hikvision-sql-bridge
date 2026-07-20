@@ -35,5 +35,12 @@
     "Directory": "logs",
     "RetentionDays": 30,
     "LogRawEvents": true
+  },
+  "UserSync": {
+    "Enabled": false,
+    "IntervalMinutes": 5,
+    "FuncionariosTable": "TG_FUNCIONARIOS",
+    "IdentificadoresTable": "TA_IDENTIFICADORES",
+    "ValidityYears": 10
   }
 }
