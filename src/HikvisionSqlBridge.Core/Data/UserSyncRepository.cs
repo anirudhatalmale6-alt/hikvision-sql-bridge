@@ -4,6 +4,9 @@ using Microsoft.Data.SqlClient;
 
 namespace HikvisionSqlBridge.Core.Data;
 
+/// <summary>Um funcionário lido do SQL (TG_FUNCIONARIOS).</summary>
+public readonly record struct FuncionarioRow(int IdNumero, string Nome);
+
 /// <summary>
 /// Grava/atualiza os utilizadores no SQL: a ficha em TG_FUNCIONARIOS e os
 /// identificadores em TA_IDENTIFICADORES. Os nomes das tabelas vêm da
@@ -68,6 +71,26 @@ public sealed class UserSyncRepository
         cmd.Parameters.Add("@fim", System.Data.SqlDbType.DateTime).Value = fim;
         var rows = await cmd.ExecuteNonQueryAsync(ct);
         return rows > 0;
+    }
+
+    /// <summary>Lê os funcionários do SQL (para o sentido SQL -> terminais).</summary>
+    public async Task<List<FuncionarioRow>> ReadFuncionariosAsync(CancellationToken ct = default)
+    {
+        var table = QuoteTable(_cfg.FuncionariosTable);
+        var sql = $"SELECT ID_NUMERO, ID_NOME FROM {table}";
+
+        var list = new List<FuncionarioRow>();
+        await using var conn = new SqlConnection(_sql.BuildConnectionString());
+        await conn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var idNumero = reader.GetInt32(0);
+            var nome = reader.IsDBNull(1) ? "" : reader.GetString(1);
+            list.Add(new FuncionarioRow(idNumero, nome));
+        }
+        return list;
     }
 
     private static string QuoteTable(string table)

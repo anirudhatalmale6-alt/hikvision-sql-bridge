@@ -28,6 +28,15 @@ public sealed class UserSyncConfig
     /// <summary>Ligar/desligar a sincronização de utilizadores.</summary>
     public bool Enabled { get; set; } = false;
 
+    /// <summary>
+    /// Sentido da sincronização, conforme o cenário:
+    /// "ivms-to-sql" = do terminal para o SQL (cria em TG_FUNCIONARIOS/TA_IDENTIFICADORES); (por omissão)
+    /// "sql-to-ivms" = do SQL para os terminais (cria os utilizadores nos equipamentos);
+    /// "both"        = os dois sentidos.
+    /// Em qualquer caso só cria o que não existe — nunca altera dados já lá.
+    /// </summary>
+    public string Direction { get; set; } = "ivms-to-sql";
+
     /// <summary>Intervalo (minutos) entre sincronizações.</summary>
     public int IntervalMinutes { get; set; } = 5;
 
@@ -36,6 +45,9 @@ public sealed class UserSyncConfig
 
     /// <summary>Anos de validade por omissão (fim = início + este valor), quando o terminal não indica.</summary>
     public int ValidityYears { get; set; } = 10;
+
+    public bool DoImportToSql => Direction is "ivms-to-sql" or "both";
+    public bool DoExportToTerminal => Direction is "sql-to-ivms" or "both";
 }
 
 /// <summary>

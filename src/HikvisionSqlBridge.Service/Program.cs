@@ -28,8 +28,12 @@ if (args.Length > 0)
             return await RunSimulate(appConfig, args);
 
         case "--sync-users":
-            // Fase 2: lê os utilizadores dos terminais e grava/atualiza no SQL.
+            // Sentido iVMS -> SQL: lê os utilizadores dos terminais e grava no SQL.
             return await RunSyncUsers(appConfig);
+
+        case "--export-users":
+            // Sentido SQL -> terminais: cria nos terminais os utilizadores do SQL.
+            return await RunExportUsers(appConfig);
 
         case "--help":
         case "-h":
@@ -121,11 +125,30 @@ static async Task<int> RunSyncUsers(AppConfig cfg)
     var repo = new UserSyncRepository(cfg.SqlServer, cfg.UserSync, log);
     var sync = new UserSyncService(cfg, repo, log);
 
-    Console.WriteLine("A ler os utilizadores dos terminais e a gravar no SQL...");
+    Console.WriteLine("iVMS -> SQL: a ler os utilizadores dos terminais e a gravar no SQL...");
     Console.WriteLine($"  Funcionários  -> {cfg.UserSync.FuncionariosTable}");
     Console.WriteLine($"  Identificadores -> {cfg.UserSync.IdentificadoresTable}");
-    var n = await sync.SyncOnceAsync(CancellationToken.None);
-    Console.WriteLine($"Concluído. {n} utilizador(es) sincronizado(s).");
+    var n = await sync.ImportToSqlOnceAsync(CancellationToken.None);
+    Console.WriteLine($"Concluído. {n} utilizador(es) novo(s) no SQL.");
+    return 0;
+}
+
+static async Task<int> RunExportUsers(AppConfig cfg)
+{
+    var log = new ConsoleAppLogger();
+    if (cfg.Equipamentos.Count == 0)
+    {
+        Console.WriteLine("Nenhum terminal configurado na secção Equipamentos.");
+        return 2;
+    }
+
+    var repo = new UserSyncRepository(cfg.SqlServer, cfg.UserSync, log);
+    var sync = new UserSyncService(cfg, repo, log);
+
+    Console.WriteLine("SQL -> terminais: a ler os funcionários do SQL e a criá-los nos terminais...");
+    Console.WriteLine("(Só cria os que ainda não existem no terminal. A biometria inscreve-se depois no equipamento.)");
+    var n = await sync.ExportToTerminalOnceAsync(CancellationToken.None);
+    Console.WriteLine($"Concluído. {n} utilizador(es) criado(s) nos terminais.");
     return 0;
 }
 
@@ -151,7 +174,8 @@ static void PrintHelp()
     Console.WriteLine("  --test-connection            Testa a ligação ao SQL Server e sai.");
     Console.WriteLine("  --simulate <nº> [metodo]     Insere uma picagem de teste (sem terminal).");
     Console.WriteLine("                               metodo: card|fp|face|pin|nfc|qr|plate");
-    Console.WriteLine("  --sync-users                 Lê os utilizadores dos terminais e grava no SQL.");
+    Console.WriteLine("  --sync-users                 iVMS -> SQL: cria no SQL os utilizadores dos terminais.");
+    Console.WriteLine("  --export-users               SQL -> terminais: cria nos terminais os utilizadores do SQL.");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
 }
 

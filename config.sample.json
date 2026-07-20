@@ -38,6 +38,7 @@
   },
   "UserSync": {
     "Enabled": false,
+    "Direction": "ivms-to-sql",
     "IntervalMinutes": 5,
     "FuncionariosTable": "TG_FUNCIONARIOS",
     "IdentificadoresTable": "TA_IDENTIFICADORES",

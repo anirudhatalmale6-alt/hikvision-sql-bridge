@@ -79,9 +79,22 @@ não existe** (nunca altera dados já inseridos):
   `ID_IDENTIFICADOR` = nº do funcionário a 5 dígitos, `ID_FUNCAO = 0` e validade
   (início / fim = início + `ValidityYears`).
 
-Regra importante: se o funcionário (ou o par identificador+tipo) já existir, o
-serviço **não mexe** — só insere o que falta. Assim nunca sobrepõe dados que já
-lá estejam.
+Regra importante: a decisão é feita pelo `ID_NUMERO` em TG_FUNCIONARIOS — se já
+existir, o serviço **não mexe em nada**; só quando é novo é que cria a ficha e os
+identificadores. Nunca sobrepõe dados já lá.
+
+### Dois sentidos (`UserSync.Direction`)
+
+- **`ivms-to-sql`** (por omissão) — do terminal para o SQL.
+- **`sql-to-ivms`** — do SQL para os terminais: lê os funcionários de
+  TG_FUNCIONARIOS e cria-os nos terminais (número, nome, validade, permissão de
+  porta) — útil para clientes que já têm a TG_FUNCIONARIOS carregada. A
+  impressão digital / face não se envia por aqui (só existe depois de captada no
+  terminal); é inscrita depois no equipamento.
+- **`both`** — os dois sentidos.
+
+Testes sem instalar: `SIBHIK.exe --sync-users` (iVMS→SQL) e
+`SIBHIK.exe --export-users` (SQL→terminais).
 
 Assim, ao inscrever um utilizador no iVMS, ele aparece automaticamente no SQL e
 as suas picagens passam a resolver o `ID_NUMERO` pelo trigger — sem inserir nada

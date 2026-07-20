@@ -28,14 +28,22 @@ public sealed class UserSyncService
     public async Task RunAsync(CancellationToken ct)
     {
         var interval = TimeSpan.FromMinutes(Math.Max(1, _config.UserSync.IntervalMinutes));
-        _log.Info($"Sincronização de utilizadores ligada (a cada {interval.TotalMinutes:0} min).");
+        _log.Info($"Sincronização de utilizadores ligada (sentido: {_config.UserSync.Direction}, a cada {interval.TotalMinutes:0} min).");
 
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                var n = await SyncOnceAsync(ct);
-                _log.Info($"Sincronização de utilizadores concluída ({n} utilizador(es)).");
+                if (_config.UserSync.DoImportToSql)
+                {
+                    var n = await ImportToSqlOnceAsync(ct);
+                    _log.Info($"iVMS -> SQL: {n} utilizador(es) novo(s).");
+                }
+                if (_config.UserSync.DoExportToTerminal)
+                {
+                    var n = await ExportToTerminalOnceAsync(ct);
+                    _log.Info($"SQL -> terminais: {n} utilizador(es) novo(s).");
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex) { _log.Error($"Sincronização de utilizadores: {ex.Message}"); }
@@ -45,8 +53,11 @@ public sealed class UserSyncService
         }
     }
 
-    /// <summary>Faz uma sincronização completa de todos os terminais. Devolve o nº de utilizadores tratados.</summary>
-    public async Task<int> SyncOnceAsync(CancellationToken ct)
+    /// <summary>
+    /// Sentido iVMS -> SQL: lê os utilizadores dos terminais e cria no SQL os que
+    /// ainda não existem. Devolve o nº de utilizadores novos.
+    /// </summary>
+    public async Task<int> ImportToSqlOnceAsync(CancellationToken ct)
     {
         int total = 0;
         foreach (var device in _config.Equipamentos)
@@ -65,10 +76,57 @@ public sealed class UserSyncService
             }
             catch (Exception ex)
             {
-                _log.Error($"Terminal {device.DisplayName} (sincronização): {ex.Message}");
+                _log.Error($"Terminal {device.DisplayName} (iVMS->SQL): {ex.Message}");
             }
         }
         return total;
+    }
+
+    /// <summary>
+    /// Sentido SQL -> terminais: lê os funcionários do SQL e cria nos terminais os
+    /// que ainda lá não existem (não mexe nos que já existem). A biometria é
+    /// inscrita depois no próprio terminal. Devolve o nº de utilizadores criados.
+    /// </summary>
+    public async Task<int> ExportToTerminalOnceAsync(CancellationToken ct)
+    {
+        var funcionarios = await _repo.ReadFuncionariosAsync(ct);
+        int totalCreated = 0;
+
+        foreach (var device in _config.Equipamentos)
+        {
+            if (ct.IsCancellationRequested) break;
+            try
+            {
+                // Quem já existe no terminal (para não mexer nesses).
+                using var reader = new HikvisionUserInfoClient(device, _log);
+                var existing = await reader.GetAllUsersAsync(ct);
+                var existingNos = new HashSet<string>(existing.Select(u => u.EmployeeNo.Trim()));
+
+                using var writer = new HikvisionUserWriteClient(device, _log);
+                var begin = DateTime.Today;
+                var end = DateTime.Today.AddYears(Math.Max(1, _config.UserSync.ValidityYears));
+
+                int created = 0;
+                foreach (var f in funcionarios)
+                {
+                    if (ct.IsCancellationRequested) break;
+                    var employeeNo = f.IdNumero.ToString();
+                    if (existingNos.Contains(employeeNo)) continue; // já existe -> não faz nada
+                    if (await writer.CreateUserAsync(employeeNo, f.Nome, begin, end, ct))
+                    {
+                        created++;
+                        _log.Info($"Utilizador criado no terminal {device.DisplayName}: {employeeNo} \"{f.Nome}\"");
+                    }
+                }
+                totalCreated += created;
+                _log.Info($"Terminal {device.DisplayName}: {created} criado(s) de {funcionarios.Count} no SQL.");
+            }
+            catch (Exception ex)
+            {
+                _log.Error($"Terminal {device.DisplayName} (SQL->terminal): {ex.Message}");
+            }
+        }
+        return totalCreated;
     }
 
     internal async Task<bool> SyncUserAsync(TerminalUser u, CancellationToken ct)
