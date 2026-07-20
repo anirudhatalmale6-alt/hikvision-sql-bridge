@@ -83,24 +83,19 @@ public sealed class UserSyncService
         var inicio = u.ValidBegin ?? DateTime.Today;
         var fim = u.ValidEnd ?? DateTime.Today.AddYears(Math.Max(1, _config.UserSync.ValidityYears));
 
-        // Regra do cliente: nunca alterar dados já inseridos. Só cria o que falta.
+        // Regra do cliente: olhar só para o ID_NUMERO na TG_FUNCIONARIOS.
+        // Se já existir -> não faz nada (não mexe em nada). Se não existir -> cria
+        // a ficha E os identificadores.
         var novoFuncionario = await _repo.InsertFuncionarioIfMissingAsync(idNumero, u.Name, ct);
+        if (!novoFuncionario)
+            return false; // ID_NUMERO já existe -> não faz nada
 
         var tipos = MethodsToTipos(u).ToList();
-        var novosIdentificadores = 0;
         foreach (var tipo in tipos)
-            if (await _repo.InsertIdentificadorIfMissingAsync(idNumero, identificador, tipo, inicio, fim, ct))
-                novosIdentificadores++;
+            await _repo.InsertIdentificadorIfMissingAsync(idNumero, identificador, tipo, inicio, fim, ct);
 
-        if (novoFuncionario || novosIdentificadores > 0)
-        {
-            _log.Info($"Utilizador criado/completado: {identificador} \"{u.Name}\" " +
-                      $"(ficha nova: {(novoFuncionario ? "sim" : "não")}, identificadores novos: {novosIdentificadores} [{string.Join(",", tipos)}])");
-            return true;
-        }
-
-        // Já existia tudo — não se mexeu em nada.
-        return false;
+        _log.Info($"Utilizador novo criado: {identificador} \"{u.Name}\" [{string.Join(",", tipos)}]");
+        return true;
     }
 
     /// <summary>
