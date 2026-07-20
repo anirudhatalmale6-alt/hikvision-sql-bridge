@@ -9,7 +9,8 @@ public sealed class Movimento
 {
     // ID              -> identity, automático (não é escrito por nós)
 
-    /// <summary>Número do utilizador. Faz parte da chave primária junto com a data/hora — por isso usamos o nº do utilizador para garantir unicidade.</summary>
+    /// <summary>Fica a 0 no INSERT. O trigger [dbo].[Movimentos_INSERT] preenche-o
+    /// automaticamente a seguir, a partir de TA_IDENTIFICADORES.</summary>
     public double IdNumero { get; set; }
 
     /// <summary>Data/hora da picagem (datetime).</summary>

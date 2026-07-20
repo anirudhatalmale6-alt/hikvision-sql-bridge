@@ -12,7 +12,7 @@ var appConfig = LoadConfig(configPath);
 var builder = Host.CreateApplicationBuilder(args);
 
 // Permite instalar/correr como Serviço do Windows.
-builder.Services.AddWindowsService(o => o.ServiceName = "HikvisionSqlBridge");
+builder.Services.AddWindowsService(o => o.ServiceName = "SIBHIK");
 
 IAppLogger logger = new FileAppLogger(appConfig.Logging);
 builder.Services.AddSingleton(appConfig);

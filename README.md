@@ -1,8 +1,9 @@
-# Hikvision → SQL Server Bridge
+# SIBHIK — Hikvision → SQL Server
 
-Serviço configurável para Windows que recebe, em tempo real, as picagens dos
-terminais de controlo de acessos Hikvision e grava-as numa base de dados SQL
-Server (por omissão `Assiduidadev3` → tabela `TG_MOVIMENTOS`).
+Serviço configurável para Windows (nome do serviço: **SIBHIK**) que recebe, em
+tempo real, as picagens dos terminais de controlo de acessos Hikvision e
+grava-as numa base de dados SQL Server (por omissão `Assiduidadev3` → tabela
+`TG_MOVIMENTOS`).
 
 O iVMS-4200 continua a ser usado normalmente para gerir utilizadores e inscrever
 impressão digital / Face ID. Este serviço corre em paralelo, sem interferir com
@@ -22,16 +23,16 @@ o iVMS: liga-se directamente ao terminal pelo canal de eventos **ISAPI**
   progressivo.
 - **Logs para auditoria** — ficheiros rotativos diários, com retenção
   configurável, e registo opcional dos eventos brutos para diagnóstico.
-- **Chave primária segura** — grava o número do utilizador em `ID_NUMERO` para
-  garantir a unicidade da chave (`ID_NUMERO + ID_DATAHORA + ID_MAIN_CODE`) e
-  nunca perder picagens no mesmo segundo.
+- **Respeita o trigger existente** — `ID_NUMERO` é gravado a 0; o trigger
+  `[dbo].[Movimentos_INSERT]` preenche-o automaticamente a seguir ao INSERT,
+  cruzando `(ID_TIPO_IDENTIFICADOR, ID_IDENTIFICADOR)` com `TA_IDENTIFICADORES`.
 
 ## Mapeamento para TG_MOVIMENTOS
 
 | Coluna                 | Valor                                                            |
 |------------------------|-----------------------------------------------------------------|
 | ID                     | identity (automático)                                           |
-| ID_NUMERO              | número do utilizador (para chave única)                         |
+| ID_NUMERO              | 0 no INSERT — preenchido pelo trigger a partir de TA_IDENTIFICADORES |
 | ID_DATAHORA            | data/hora da picagem                                            |
 | ID_MAIN_CODE           | 0                                                               |
 | ID_TIPO_IDENTIFICADOR  | 1=RFID · 2=Impressão digital/Face · 3=PIN · 5=Matrícula · 6=NFC · 7=QR |
@@ -74,11 +75,11 @@ dotnet test
 
 ```powershell
 # publicar
-dotnet publish src/HikvisionSqlBridge.Service -c Release -r win-x64 --self-contained false -o C:\HikvisionSqlBridge
+dotnet publish src/HikvisionSqlBridge.Service -c Release -r win-x64 --self-contained false -o C:\SIBHIK
 
 # criar e arrancar o serviço
-sc.exe create HikvisionSqlBridge binPath= "C:\HikvisionSqlBridge\HikvisionSqlBridge.Service.exe" start= auto
-sc.exe start HikvisionSqlBridge
+sc.exe create SIBHIK binPath= "C:\SIBHIK\HikvisionSqlBridge.Service.exe" start= auto
+sc.exe start SIBHIK
 ```
 
 > Estado: núcleo funcional (ISAPI + parsing + gravação em SQL + reconexão +

@@ -45,22 +45,14 @@ public static class MovimentoMapper
         return trimmed.PadLeft(5, '0');
     }
 
-    /// <summary>
-    /// Extrai o número do utilizador para ID_NUMERO (double). ID_NUMERO faz parte
-    /// da chave primária, por isso usamos o próprio número do utilizador para
-    /// garantir unicidade (dois utilizadores no mesmo segundo não colidem).
-    /// </summary>
-    public static double ToIdNumero(string employeeNo)
-    {
-        var trimmed = (employeeNo ?? "").Trim();
-        return double.TryParse(trimmed, out var n) ? n : 0d;
-    }
-
     public static Movimento ToMovimento(AccessEvent e)
     {
         return new Movimento
         {
-            IdNumero = ToIdNumero(e.EmployeeNo),
+            // ID_NUMERO fica a 0 — o trigger [dbo].[Movimentos_INSERT] preenche-o
+            // depois do INSERT, cruzando (ID_TIPO_IDENTIFICADOR, ID_IDENTIFICADOR)
+            // com a tabela TA_IDENTIFICADORES.
+            IdNumero = 0,
             IdDataHora = e.EventTime,
             IdMainCode = 0,
             IdTipoIdentificador = ToTipoIdentificador(e.Method),

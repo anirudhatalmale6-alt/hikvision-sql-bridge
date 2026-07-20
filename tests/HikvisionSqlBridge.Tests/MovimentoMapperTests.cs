@@ -33,14 +33,6 @@ public class MovimentoMapperTests
     }
 
     [Fact]
-    public void ToIdNumero_uses_user_number_to_keep_primary_key_unique()
-    {
-        Assert.Equal(6226d, MovimentoMapper.ToIdNumero("6226"));
-        Assert.Equal(489d, MovimentoMapper.ToIdNumero("00489"));
-        Assert.Equal(0d, MovimentoMapper.ToIdNumero(""));
-    }
-
-    [Fact]
     public void ToMovimento_produces_expected_fixed_values()
     {
         var e = new AccessEvent
@@ -54,7 +46,7 @@ public class MovimentoMapperTests
 
         var m = MovimentoMapper.ToMovimento(e);
 
-        Assert.Equal(489d, m.IdNumero);
+        Assert.Equal(0d, m.IdNumero); // fica a 0; o trigger preenche-o depois
         Assert.Equal(new DateTime(2025, 6, 21, 20, 0, 48), m.IdDataHora);
         Assert.Equal(0, m.IdMainCode);
         Assert.Equal(2, m.IdTipoIdentificador);
