@@ -126,8 +126,8 @@ public sealed class HikvisionUserInfoClient : IDisposable
         // Validade (bloco "Valid": { beginTime, endTime }).
         if (item.TryGetProperty("Valid", out var valid) && valid.ValueKind == JsonValueKind.Object)
         {
-            if (DateTimeOffset.TryParse(GetString(valid, "beginTime"), out var b)) user.ValidBegin = b.LocalDateTime;
-            if (DateTimeOffset.TryParse(GetString(valid, "endTime"), out var e)) user.ValidEnd = e.LocalDateTime;
+            if (DateTimeOffset.TryParse(GetString(valid, "beginTime"), out var b)) user.ValidBegin = b.DateTime;
+            if (DateTimeOffset.TryParse(GetString(valid, "endTime"), out var e)) user.ValidEnd = e.DateTime;
         }
 
         // Métodos: pelos contadores, quando o firmware os fornece.

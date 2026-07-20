@@ -70,14 +70,18 @@ tests/HikvisionSqlBridge.Tests   Testes unitários
 ## Sincronização de utilizadores (Fase 2)
 
 Opcional (`UserSync.Enabled`). Quando ligada, o serviço lê periodicamente os
-utilizadores inscritos nos terminais (ISAPI `UserInfo`) e cria/atualiza
-automaticamente:
+utilizadores inscritos nos terminais (ISAPI `UserInfo`) e cria **só o que ainda
+não existe** (nunca altera dados já inseridos):
 
 - a ficha em **TG_FUNCIONARIOS** (`ID_NUMERO`, `ID_NOME`, `ID_ACTIVO`);
 - os identificadores em **TA_IDENTIFICADORES** — uma linha por método
   (digital/face = tipo 2, cartão = tipo 1, PIN = tipo 3), com
   `ID_IDENTIFICADOR` = nº do funcionário a 5 dígitos, `ID_FUNCAO = 0` e validade
   (início / fim = início + `ValidityYears`).
+
+Regra importante: se o funcionário (ou o par identificador+tipo) já existir, o
+serviço **não mexe** — só insere o que falta. Assim nunca sobrepõe dados que já
+lá estejam.
 
 Assim, ao inscrever um utilizador no iVMS, ele aparece automaticamente no SQL e
 as suas picagens passam a resolver o `ID_NUMERO` pelo trigger — sem inserir nada

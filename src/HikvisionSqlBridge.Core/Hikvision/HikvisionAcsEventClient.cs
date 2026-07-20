@@ -134,7 +134,10 @@ public sealed class HikvisionAcsEventClient : IDisposable
         var time = DateTime.Now;
         var timeStr = GetString(item, "time");
         if (DateTimeOffset.TryParse(timeStr, out var dto))
-            time = dto.LocalDateTime;
+            // Usamos a hora tal como o terminal a escreve (sem conversão de fuso).
+            // Alguns terminais marcam o evento com fuso +00:00 mas a hora já é a
+            // local que o terminal mostra; converter para "local" adicionava 1h.
+            time = dto.DateTime;
 
         // Método: preferir currentVerifyMode; se não vier, tentar pelo cartão.
         var verifyMode = GetString(item, "currentVerifyMode");

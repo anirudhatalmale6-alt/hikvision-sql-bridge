@@ -58,6 +58,20 @@ public class AcsEventClientTests
     }
 
     [Fact]
+    public void ParseResponse_keeps_terminal_wall_clock_time_ignoring_offset()
+    {
+        // O terminal marca o evento com fuso +00:00 mas a hora (18:57) já é a que
+        // ele mostra. Deve ficar 18:57, não 19:57 (sem somar/converter fuso).
+        var json = @"{ ""AcsEvent"": { ""responseStatusStrg"": ""OK"", ""InfoList"": [
+            { ""time"": ""2026-07-20T18:57:41+00:00"", ""employeeNoString"": ""3"", ""currentVerifyMode"": ""face"", ""serialNo"": 3001 } ] } }";
+
+        var (events, _, _) = HikvisionAcsEventClient.ParseResponse(json, "192.168.1.51");
+
+        Assert.Single(events);
+        Assert.Equal(new DateTime(2026, 7, 20, 18, 57, 41), events[0].EventTime);
+    }
+
+    [Fact]
     public void ParseResponse_handles_empty_list()
     {
         var json = @"{ ""AcsEvent"": { ""responseStatusStrg"": ""OK"", ""numOfMatches"": 0 } }";

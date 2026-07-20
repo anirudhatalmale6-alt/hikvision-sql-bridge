@@ -83,13 +83,24 @@ public sealed class UserSyncService
         var inicio = u.ValidBegin ?? DateTime.Today;
         var fim = u.ValidEnd ?? DateTime.Today.AddYears(Math.Max(1, _config.UserSync.ValidityYears));
 
-        await _repo.UpsertFuncionarioAsync(idNumero, u.Name, ct);
+        // Regra do cliente: nunca alterar dados já inseridos. Só cria o que falta.
+        var novoFuncionario = await _repo.InsertFuncionarioIfMissingAsync(idNumero, u.Name, ct);
 
-        foreach (var tipo in MethodsToTipos(u))
-            await _repo.UpsertIdentificadorAsync(idNumero, identificador, tipo, inicio, fim, ct);
+        var tipos = MethodsToTipos(u).ToList();
+        var novosIdentificadores = 0;
+        foreach (var tipo in tipos)
+            if (await _repo.InsertIdentificadorIfMissingAsync(idNumero, identificador, tipo, inicio, fim, ct))
+                novosIdentificadores++;
 
-        _log.Info($"Utilizador sincronizado: {identificador} \"{u.Name}\" [{string.Join(",", MethodsToTipos(u))}]");
-        return true;
+        if (novoFuncionario || novosIdentificadores > 0)
+        {
+            _log.Info($"Utilizador criado/completado: {identificador} \"{u.Name}\" " +
+                      $"(ficha nova: {(novoFuncionario ? "sim" : "não")}, identificadores novos: {novosIdentificadores} [{string.Join(",", tipos)}])");
+            return true;
+        }
+
+        // Já existia tudo — não se mexeu em nada.
+        return false;
     }
 
     /// <summary>
