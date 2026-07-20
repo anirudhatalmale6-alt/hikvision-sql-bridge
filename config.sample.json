@@ -1,0 +1,35 @@
+{
+  "SqlServer": {
+    "Server": "srvcmasql3\\SQLEXPRESS",
+    "Database": "Assiduidadev3",
+    "Table": "TG_MOVIMENTOS",
+    "UseWindowsAuth": false,
+    "User": "bevotech",
+    "Password": "AQUI_A_PASSWORD",
+    "TrustServerCertificate": true,
+    "ConnectTimeoutSeconds": 15
+  },
+  "Equipamentos": [
+    {
+      "Name": "Porta Principal",
+      "Ip": "192.168.1.25",
+      "Port": 80,
+      "UseHttps": false,
+      "User": "admin",
+      "Password": "AQUI_A_PASSWORD"
+    },
+    {
+      "Name": "Porta Traseira",
+      "Ip": "192.168.1.26",
+      "Port": 80,
+      "UseHttps": false,
+      "User": "admin",
+      "Password": "AQUI_A_PASSWORD"
+    }
+  ],
+  "Logging": {
+    "Directory": "logs",
+    "RetentionDays": 30,
+    "LogRawEvents": true
+  }
+}

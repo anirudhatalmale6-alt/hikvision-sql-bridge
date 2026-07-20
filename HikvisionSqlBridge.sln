@@ -1,0 +1,43 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{35D5DA8A-27E8-4B13-9BB6-FAA7AC60C06D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HikvisionSqlBridge.Core", "src\HikvisionSqlBridge.Core\HikvisionSqlBridge.Core.csproj", "{B1CD0AF9-9E74-44A4-B794-F01A42EB0590}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HikvisionSqlBridge.Service", "src\HikvisionSqlBridge.Service\HikvisionSqlBridge.Service.csproj", "{1B201A04-8918-4CE9-AE6C-CB7D2B9F1A28}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{74B4A6F7-D2B0-4604-B86F-EDF8AD7D9B27}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HikvisionSqlBridge.Tests", "tests\HikvisionSqlBridge.Tests\HikvisionSqlBridge.Tests.csproj", "{C0A2D9F5-FD3F-4766-A80E-5B8B265D2720}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B1CD0AF9-9E74-44A4-B794-F01A42EB0590}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1CD0AF9-9E74-44A4-B794-F01A42EB0590}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B1CD0AF9-9E74-44A4-B794-F01A42EB0590}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1CD0AF9-9E74-44A4-B794-F01A42EB0590}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1B201A04-8918-4CE9-AE6C-CB7D2B9F1A28}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B201A04-8918-4CE9-AE6C-CB7D2B9F1A28}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B201A04-8918-4CE9-AE6C-CB7D2B9F1A28}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B201A04-8918-4CE9-AE6C-CB7D2B9F1A28}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0A2D9F5-FD3F-4766-A80E-5B8B265D2720}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0A2D9F5-FD3F-4766-A80E-5B8B265D2720}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0A2D9F5-FD3F-4766-A80E-5B8B265D2720}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0A2D9F5-FD3F-4766-A80E-5B8B265D2720}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B1CD0AF9-9E74-44A4-B794-F01A42EB0590} = {35D5DA8A-27E8-4B13-9BB6-FAA7AC60C06D}
+		{1B201A04-8918-4CE9-AE6C-CB7D2B9F1A28} = {35D5DA8A-27E8-4B13-9BB6-FAA7AC60C06D}
+		{C0A2D9F5-FD3F-4766-A80E-5B8B265D2720} = {74B4A6F7-D2B0-4604-B86F-EDF8AD7D9B27}
+	EndGlobalSection
+EndGlobal
