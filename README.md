@@ -76,6 +76,26 @@ dotnet build
 dotnet test
 ```
 
+## Como testar sem terminal (só a parte de SQL)
+
+Para validar a ligação e o trigger na máquina onde vai correr, sem precisar de
+um terminal Hikvision:
+
+```powershell
+# 1) Testar apenas a ligação ao SQL Server
+SIBHIK.exe --test-connection
+
+# 2) Inserir uma picagem de teste em TG_MOVIMENTOS
+#    (use um nº de utilizador que já exista na TA_IDENTIFICADORES)
+SIBHIK.exe --simulate 489 face
+SIBHIK.exe --simulate 489 card
+```
+
+O `--simulate` grava a linha com ID_NUMERO = 0 e o método escolhido; depois
+confirma-se na tabela que o trigger `Movimentos_INSERT` preencheu o ID_NUMERO a
+partir da TA_IDENTIFICADORES. Assim testa-se toda a parte de SQL antes de ligar
+os equipamentos.
+
 ## Instalar como Serviço do Windows
 
 ```powershell
