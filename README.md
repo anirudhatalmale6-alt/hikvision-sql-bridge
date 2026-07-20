@@ -107,6 +107,14 @@ sc.exe create SIBHIK binPath= "C:\SIBHIK\HikvisionSqlBridge.Service.exe" start= 
 sc.exe start SIBHIK
 ```
 
+## Nota sobre a ligação ao SQL (Encrypt)
+
+Por omissão a ligação usa `Encrypt = false` (e `TrustServerCertificate = true`),
+tal como o software bevotech. O driver moderno (Microsoft.Data.SqlClient) exige
+encriptação por omissão, o que faz falhar o login contra instâncias locais/
+internas sem certificado TLS válido — daí desligarmos a encriptação por defeito.
+Se o servidor tiver certificado válido e quiser encriptar, ponha `"Encrypt": true`.
+
 > Estado: núcleo funcional (ISAPI + parsing + gravação em SQL + reconexão +
 > logs) com testes a passar. Falta afinar, com o equipamento real, o
 > mapeamento exacto do método de verificação e dos códigos de acesso

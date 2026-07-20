@@ -7,6 +7,7 @@
     "UseWindowsAuth": false,
     "User": "sa",
     "Password": "AQUI_A_PASSWORD",
+    "Encrypt": false,
     "TrustServerCertificate": true,
     "ConnectTimeoutSeconds": 15
   },

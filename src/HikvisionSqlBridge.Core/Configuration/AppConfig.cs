@@ -40,6 +40,14 @@ public sealed class SqlServerConfig
     public string User { get; set; } = "";
     public string Password { get; set; } = "";
 
+    /// <summary>
+    /// Encriptação TLS da ligação. Por omissão FALSE, tal como o software
+    /// bevotech (System.Data.SqlClient) — as instâncias locais/internas
+    /// costumam não ter certificado TLS válido, e o driver novo
+    /// (Microsoft.Data.SqlClient) rejeita a ligação se exigir encriptação.
+    /// </summary>
+    public bool Encrypt { get; set; } = false;
+
     /// <summary>Confia no certificado do servidor (útil em instâncias locais sem certificado válido).</summary>
     public bool TrustServerCertificate { get; set; } = true;
 
@@ -48,28 +56,36 @@ public sealed class SqlServerConfig
 
     public string BuildConnectionString()
     {
-        // Se o cliente colou uma connection string completa, usamo-la tal e qual.
+        Microsoft.Data.SqlClient.SqlConnectionStringBuilder b;
+
         if (!string.IsNullOrWhiteSpace(ConnectionString))
-            return ConnectionString;
-
-        var b = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder
         {
-            DataSource = Server,
-            InitialCatalog = Database,
-            TrustServerCertificate = TrustServerCertificate,
-            ConnectTimeout = ConnectTimeoutSeconds,
-            MultipleActiveResultSets = true,
-        };
-
-        if (UseWindowsAuth)
-        {
-            b.IntegratedSecurity = true;
+            // Connection string colada pelo cliente: partimos dela...
+            b = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(ConnectionString);
         }
         else
         {
-            b.UserID = User;
-            b.Password = Password;
+            b = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder
+            {
+                DataSource = Server,
+                InitialCatalog = Database,
+                ConnectTimeout = ConnectTimeoutSeconds,
+                MultipleActiveResultSets = true,
+            };
+
+            if (UseWindowsAuth)
+                b.IntegratedSecurity = true;
+            else
+            {
+                b.UserID = User;
+                b.Password = Password;
+            }
         }
+
+        // ...e garantimos sempre estas duas, que são a causa mais comum de
+        // falha de login contra instâncias locais sem certificado TLS.
+        b.Encrypt = Encrypt;
+        b.TrustServerCertificate = TrustServerCertificate;
 
         return b.ConnectionString;
     }

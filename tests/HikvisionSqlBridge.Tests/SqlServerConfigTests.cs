@@ -6,12 +6,21 @@ namespace HikvisionSqlBridge.Tests;
 public class SqlServerConfigTests
 {
     [Fact]
-    public void BuildConnectionString_uses_raw_string_when_provided()
+    public void BuildConnectionString_keeps_pasted_string_and_forces_encrypt_false()
     {
         var raw = "Data Source=DESKTOP-S8CKGL7\\SQL;Initial Catalog=SPBA1;User Id=sa;Password=xxx;MultipleActiveResultSets=True;";
         var cfg = new SqlServerConfig { ConnectionString = raw };
 
-        Assert.Equal(raw, cfg.BuildConnectionString());
+        var cs = cfg.BuildConnectionString();
+
+        // Mantém o que veio na string colada...
+        Assert.Contains("Data Source=DESKTOP-S8CKGL7\\SQL", cs);
+        Assert.Contains("Initial Catalog=SPBA1", cs);
+        Assert.Contains("User ID=sa", cs);
+        Assert.Contains("Multiple Active Result Sets=True", cs);
+        // ...e força Encrypt=False + TrustServerCertificate=True (correção do login).
+        Assert.Contains("Encrypt=False", cs);
+        Assert.Contains("Trust Server Certificate=True", cs);
     }
 
     [Fact]
@@ -31,6 +40,7 @@ public class SqlServerConfigTests
         Assert.Contains("Initial Catalog=SPBA1", cs);
         Assert.Contains("User ID=sa", cs);
         Assert.Contains("Multiple Active Result Sets=True", cs);
+        Assert.Contains("Encrypt=False", cs);
         Assert.DoesNotContain("Integrated Security", cs);
     }
 
