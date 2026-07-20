@@ -109,6 +109,14 @@ os equipamentos.
 
 ## Instalar como Serviço do Windows
 
+Forma simples (na build já publicada): duplo-clique em
+`scripts/instalar-servico.bat` (aceitar o pedido de administrador). Cria e
+arranca o serviço `SIBHIK`, configurado para arrancar automaticamente com o
+Windows e reiniciar sozinho em caso de falha. Para remover:
+`scripts/desinstalar-servico.bat`.
+
+Manualmente:
+
 ```powershell
 # publicar
 dotnet publish src/HikvisionSqlBridge.Service -c Release -r win-x64 --self-contained false -o C:\SIBHIK
@@ -117,6 +125,13 @@ dotnet publish src/HikvisionSqlBridge.Service -c Release -r win-x64 --self-conta
 sc.exe create SIBHIK binPath= "C:\SIBHIK\HikvisionSqlBridge.Service.exe" start= auto
 sc.exe start SIBHIK
 ```
+
+## Vários terminais
+
+Basta acrescentar entradas à lista `Equipamentos` do `config.json` — uma por
+terminal, cada uma com o seu IP / utilizador / palavra-passe. O serviço trata de
+todos em paralelo e cada picagem fica com o IP do terminal onde ocorreu
+(`ID_IPTERMINAL`).
 
 ## Nota sobre a ligação ao SQL (Encrypt)
 
