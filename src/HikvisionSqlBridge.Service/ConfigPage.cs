@@ -212,16 +212,21 @@ function buildConfig() {
   };
 }
 
+// Nunca sobrepomos className por inteiro (isso apagava a classe 't-status' e o
+// teste seguinte já não encontrava o elemento). Só ligamos/desligamos ok/erro.
+function resetStatus(el) { el.classList.remove('ok', 'erro'); el.textContent = 'A testar...'; }
+
 function setStatus(el, ok, msg) {
   const t = new Date().toLocaleTimeString();
-  el.className = 'status ' + (ok ? 'ok' : 'erro');
+  el.classList.remove('ok', 'erro');
+  el.classList.add(ok ? 'ok' : 'erro');
   // Mostra a hora do teste para se ver sempre que o teste voltou a correr.
   el.textContent = (ok ? '✓ ' : '✗ ') + msg + '   (' + t + ')';
 }
 
 async function testSql(btn) {
   const el = $('sqlStatus'); if (btn) btn.disabled = true;
-  el.className = 'status'; el.textContent = 'A testar...';
+  resetStatus(el);
   try {
     const r = await fetch('/api/test-sql', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(readSql()) });
     const j = await r.json(); setStatus(el, j.ok, j.message);
@@ -232,7 +237,7 @@ async function testSql(btn) {
 async function testTerminal(btn) {
   const node = btn.closest('.terminal'); const el = node.querySelector('.t-status');
   btn.disabled = true;
-  el.className = 'status'; el.textContent = 'A testar...';
+  resetStatus(el);
   try {
     const r = await fetch('/api/test-terminal', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(readTerminal(node)) });
     const j = await r.json(); setStatus(el, j.ok, j.message);
