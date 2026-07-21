@@ -10,7 +10,7 @@ using HikvisionSqlBridge.Service;
 // Carrega a configuração a partir de config.json (ao lado do executável).
 // Este é o mesmo ficheiro que a janela de configuração grava, por isso a
 // ferramenta funciona em qualquer servidor só editando/gerando este ficheiro.
-var configPath = Path.Combine(AppContext.BaseDirectory, "config.json");
+var configPath = Path.Combine(ExeDirectory(), "config.json");
 var appConfig = LoadConfig(configPath);
 
 // --------- Modos de teste por linha de comandos (não instalam serviço) ---------
@@ -182,6 +182,22 @@ static void PrintHelp()
     Console.WriteLine("  --export-users               SQL -> terminais: cria nos terminais os utilizadores do SQL.");
     Console.WriteLine("  --config                     Abre a janela de configuração (no browser).");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
+}
+
+// Pasta REAL onde está o SIBHIK.exe. Em modo single-file, AppContext.BaseDirectory
+// pode apontar para uma pasta temporária de extracção — por isso preferimos o
+// caminho do próprio executável (Environment.ProcessPath), para o config.json
+// ficar sempre ao lado do SIBHIK.exe (e ser o mesmo que o serviço lê e a janela grava).
+static string ExeDirectory()
+{
+    var proc = Environment.ProcessPath;
+    if (!string.IsNullOrEmpty(proc) &&
+        !Path.GetFileNameWithoutExtension(proc).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+    {
+        var dir = Path.GetDirectoryName(proc);
+        if (!string.IsNullOrEmpty(dir)) return dir;
+    }
+    return AppContext.BaseDirectory; // fallback (ex.: correr via 'dotnet App.dll')
 }
 
 static AppConfig LoadConfig(string path)
