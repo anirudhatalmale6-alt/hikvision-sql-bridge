@@ -70,7 +70,7 @@ public static class ConfigPage
       <div class="fld"><label>Password</label><input type="password" id="sqlPass"></div>
     </div>
     <div class="check"><input type="checkbox" id="sqlEncrypt"><label for="sqlEncrypt" style="margin:0">Encriptar ligação (Encrypt) — só se o servidor tiver certificado TLS válido</label></div>
-    <div class="row"><button type="button" class="ghost" onclick="testSql()">Testar ligação ao SQL</button></div>
+    <div class="row"><button type="button" class="ghost" onclick="testSql(this)">Testar ligação ao SQL</button></div>
     <div class="status" id="sqlStatus"></div>
     <details class="adv">
       <summary>Avançado — colar connection string completa</summary>
@@ -82,6 +82,7 @@ public static class ConfigPage
   <fieldset>
     <legend>Terminais</legend>
     <p class="hint">Um ou vários terminais Hikvision/Safire, mesmo em redes diferentes. Cada um com o seu IP e credenciais.</p>
+    <p class="hint">Nota: se testar com a password errada, alguns terminais bloqueiam o IP durante uns minutos — nesse caso, mesmo a password certa dá 401 até desbloquear (aguarde uns minutos ou reinicie o terminal).</p>
     <div id="terminals"></div>
     <button type="button" class="ghost" onclick="addTerminal()">+ Adicionar terminal</button>
   </fieldset>
@@ -212,25 +213,31 @@ function buildConfig() {
 }
 
 function setStatus(el, ok, msg) {
+  const t = new Date().toLocaleTimeString();
   el.className = 'status ' + (ok ? 'ok' : 'erro');
-  el.textContent = (ok ? '✓ ' : '✗ ') + msg;
+  // Mostra a hora do teste para se ver sempre que o teste voltou a correr.
+  el.textContent = (ok ? '✓ ' : '✗ ') + msg + '   (' + t + ')';
 }
 
-async function testSql() {
-  const el = $('sqlStatus'); el.className = 'status'; el.textContent = 'A testar...';
+async function testSql(btn) {
+  const el = $('sqlStatus'); if (btn) btn.disabled = true;
+  el.className = 'status'; el.textContent = 'A testar...';
   try {
     const r = await fetch('/api/test-sql', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(readSql()) });
     const j = await r.json(); setStatus(el, j.ok, j.message);
   } catch (e) { setStatus(el, false, 'Erro: ' + e); }
+  finally { if (btn) btn.disabled = false; }
 }
 
 async function testTerminal(btn) {
   const node = btn.closest('.terminal'); const el = node.querySelector('.t-status');
+  btn.disabled = true;
   el.className = 'status'; el.textContent = 'A testar...';
   try {
     const r = await fetch('/api/test-terminal', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(readTerminal(node)) });
     const j = await r.json(); setStatus(el, j.ok, j.message);
   } catch (e) { setStatus(el, false, 'Erro: ' + e); }
+  finally { btn.disabled = false; }
 }
 
 async function save() {
