@@ -57,13 +57,23 @@ public sealed class DeviceListener
                 var start = since.AddSeconds(-10);
                 var events = await client.QueryAsync(start, now.AddSeconds(5), ct);
 
-                foreach (var ev in events.OrderBy(e => ParseSerial(e.SerialNo)))
+                // Alguns terminais (visto num Safire) registam a MESMA picagem duas
+                // vezes com a hora deslocada exactamente 1h (bug de fuso/DST no
+                // equipamento). Colapsamos esses duplicados dentro do lote.
+                var deduped = CollapseHourDuplicates(events, now.DateTime);
+
+                foreach (var ev in deduped.OrderBy(e => ParseSerial(e.SerialNo)))
                 {
                     var serial = ParseSerial(ev.SerialNo);
                     if (serial <= lastSerial) continue; // já tratada
                     await HandleEventAsync(ev);
-                    lastSerial = serial;
                 }
+
+                // Avança o marcador para além de TODOS os serialNo vistos neste lote
+                // (incluindo os duplicados descartados), para que a janela de
+                // sobreposição não os volte a trazer no próximo ciclo.
+                foreach (var ev in events)
+                    lastSerial = Math.Max(lastSerial, ParseSerial(ev.SerialNo));
 
                 since = now;
                 backoff = MinBackoff; // consulta correu bem
@@ -90,6 +100,20 @@ public sealed class DeviceListener
     // serialNo é numérico e crescente no Hikvision; usamo-lo para não repetir picagens.
     private static long ParseSerial(string? serial)
         => long.TryParse(serial, out var n) ? n : -1;
+
+    /// <summary>
+    /// Colapsa duplicados da mesma picagem que só diferem na hora (deslocamento de
+    /// fuso/DST no terminal). Dentro do mesmo lote, agrupa por
+    /// (funcionário, método, minuto, segundo) e fica apenas com o evento cuja hora
+    /// está mais próxima da hora real — descartando o "fantasma" +/- Nh. Picagens
+    /// reais separadas por horas chegam em lotes diferentes, logo nunca são
+    /// afectadas.
+    /// </summary>
+    internal static List<AccessEvent> CollapseHourDuplicates(List<AccessEvent> events, DateTime reference)
+        => events
+            .GroupBy(e => (e.EmployeeNo, e.Method, e.EventTime.Minute, e.EventTime.Second))
+            .Select(g => g.OrderBy(e => Math.Abs((e.EventTime - reference).Ticks)).First())
+            .ToList();
 
     /// <summary>Modo por streaming (ISAPI alertStream) — mais imediato mas nem todos os modelos o suportam.</summary>
     private async Task RunStreamAsync(CancellationToken ct)
