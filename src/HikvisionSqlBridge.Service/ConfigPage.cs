@@ -9,6 +9,7 @@ public static class ConfigPage
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.ico">
 <title>SIBHIK — Configuração</title>
 <style>
   :root { --azul:#1f5fa8; --azul2:#17457a; --linha:#d7dde5; --fundo:#eef1f5; --ok:#1c7c3c; --erro:#b3261e; }

@@ -4,8 +4,14 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>SIBHIK.ico</ApplicationIcon>
     <UserSecretsId>dotnet-HikvisionSqlBridge.Service-fb0d5198-202b-44fe-8a67-5367d2a4c2a7</UserSecretsId>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Ícone também embutido como recurso, para servir de favicon na janela de configuração. -->
+    <EmbeddedResource Include="SIBHIK.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

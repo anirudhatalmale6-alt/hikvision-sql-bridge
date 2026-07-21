@@ -38,6 +38,13 @@ public static class ConfigWebApp
             await ctx.Response.WriteAsync(ConfigPage.Html);
         });
 
+        // Ícone da aplicação, como favicon da janela.
+        app.MapGet("/favicon.ico", () =>
+        {
+            var bytes = LoadIcon();
+            return bytes is null ? Results.NotFound() : Results.File(bytes, "image/x-icon");
+        });
+
         // Devolve a configuração actual (para preencher o formulário).
         app.MapGet("/api/config", () =>
             Results.Json(ConfigStore.LoadOrNew(configPath), ConfigStore.Options));
@@ -96,6 +103,19 @@ public static class ConfigWebApp
 
         await app.WaitForShutdownAsync();
         return 0;
+    }
+
+    private static byte[]? LoadIcon()
+    {
+        var asm = typeof(ConfigWebApp).Assembly;
+        var name = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith("SIBHIK.ico", StringComparison.OrdinalIgnoreCase));
+        if (name is null) return null;
+        using var s = asm.GetManifestResourceStream(name);
+        if (s is null) return null;
+        using var ms = new MemoryStream();
+        s.CopyTo(ms);
+        return ms.ToArray();
     }
 
     private static void TryOpenBrowser(string url)
