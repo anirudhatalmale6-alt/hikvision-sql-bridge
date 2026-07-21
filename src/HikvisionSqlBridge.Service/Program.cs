@@ -35,6 +35,10 @@ if (args.Length > 0)
             // Sentido SQL -> terminais: cria nos terminais os utilizadores do SQL.
             return await RunExportUsers(appConfig);
 
+        case "--config":
+            // Abre a janela de configuração gráfica (no browser, servidor local).
+            return await ConfigWebApp.RunAsync(configPath);
+
         case "--help":
         case "-h":
             PrintHelp();
@@ -176,6 +180,7 @@ static void PrintHelp()
     Console.WriteLine("                               metodo: card|fp|face|pin|nfc|qr|plate");
     Console.WriteLine("  --sync-users                 iVMS -> SQL: cria no SQL os utilizadores dos terminais.");
     Console.WriteLine("  --export-users               SQL -> terminais: cria nos terminais os utilizadores do SQL.");
+    Console.WriteLine("  --config                     Abre a janela de configuração (no browser).");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
 }
 
