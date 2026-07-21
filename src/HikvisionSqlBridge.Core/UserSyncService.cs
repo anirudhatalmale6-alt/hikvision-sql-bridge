@@ -144,7 +144,7 @@ public sealed class UserSyncService
         // Regra do cliente: olhar só para o ID_NUMERO na TG_FUNCIONARIOS.
         // Se já existir -> não faz nada (não mexe em nada). Se não existir -> cria
         // a ficha E os identificadores.
-        var novoFuncionario = await _repo.InsertFuncionarioIfMissingAsync(idNumero, u.Name, ct);
+        var novoFuncionario = await _repo.InsertFuncionarioIfMissingAsync(idNumero, u.Name, inicio, fim, ct);
         if (!novoFuncionario)
             return false; // ID_NUMERO já existe -> não faz nada
 

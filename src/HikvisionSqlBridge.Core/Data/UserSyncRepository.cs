@@ -30,18 +30,23 @@ public sealed class UserSyncRepository
     /// existir, não mexe em nada (não altera dados já inseridos). Devolve true se
     /// inseriu, false se já existia.
     /// </summary>
-    public async Task<bool> InsertFuncionarioIfMissingAsync(int idNumero, string nome, CancellationToken ct = default)
+    public async Task<bool> InsertFuncionarioIfMissingAsync(
+        int idNumero, string nome, DateTime inicio, DateTime fim, CancellationToken ct = default)
     {
         var table = QuoteTable(_cfg.FuncionariosTable);
         var sql =
             $"IF NOT EXISTS (SELECT 1 FROM {table} WHERE ID_NUMERO = @numero) " +
-            $"  INSERT INTO {table} (ID_NUMERO, ID_NOME, ID_ACTIVO) VALUES (@numero, @nome, 1);";
+            $"  INSERT INTO {table} " +
+            $"    (ID_NUMERO, ID_NOME, ID_ACTIVO, ID_LAST_FASE_START, ID_LAST_FASE_END) " +
+            $"  VALUES (@numero, @nome, 1, @inicio, @fim);";
 
         await using var conn = new SqlConnection(_sql.BuildConnectionString());
         await conn.OpenAsync(ct);
         await using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.Add("@numero", System.Data.SqlDbType.Int).Value = idNumero;
         cmd.Parameters.Add("@nome", System.Data.SqlDbType.VarChar, 255).Value = (object?)nome ?? DBNull.Value;
+        cmd.Parameters.Add("@inicio", System.Data.SqlDbType.DateTime).Value = inicio;
+        cmd.Parameters.Add("@fim", System.Data.SqlDbType.DateTime).Value = fim;
         var rows = await cmd.ExecuteNonQueryAsync(ct);
         return rows > 0;
     }
