@@ -90,8 +90,16 @@ public static class ConfigPage
   <fieldset>
     <legend>Sincronização de utilizadores</legend>
     <div class="check"><input type="checkbox" id="syncEnabled"><label for="syncEnabled" style="margin:0"><b>Ativar</b> sincronização automática de utilizadores</label></div>
-    <div class="check"><input type="checkbox" id="syncValidity"><label for="syncValidity" style="margin:0"><b>Sincronizar alterações da data de fim de validade</b> nos dois sentidos (SQL &lt;-&gt; terminal)</label></div>
-    <p class="hint">Com isto ligado, se alterar a data de fim de validade num lado (por ex. dar saída pondo a data de hoje/anterior, ou prolongar), o outro lado é atualizado sozinho. Só tem de mexer num sítio.</p>
+    <div class="check"><input type="checkbox" id="syncValidity"><label for="syncValidity" style="margin:0"><b>Sincronizar alterações da data de fim de validade</b></label></div>
+    <div class="row">
+      <div class="fld"><label>Quem manda na validade</label>
+        <select id="validityMaster">
+          <option value="sql">O SQL manda — os terminais seguem o SQL (recomendado)</option>
+          <option value="both">Nos dois sentidos — o lado alterado é que manda</option>
+        </select>
+      </div>
+    </div>
+    <p class="hint">Com "O SQL manda", a data de validade é sempre a que estiver no SQL (ID_FIM_VALIDADE) e os terminais são atualizados para essa data. Para dar saída ou prolongar, altera-se só no SQL. Regra fixa e previsível.</p>
     <div class="row">
       <div class="fld"><label>Sentido</label>
         <select id="syncDirection">
@@ -210,7 +218,8 @@ function buildConfig() {
       FuncionariosTable: $('syncFunc').value.trim() || 'TG_FUNCIONARIOS',
       IdentificadoresTable: $('syncIdent').value.trim() || 'TA_IDENTIFICADORES',
       ValidityYears: parseInt($('syncValidityYears').value) || 10,
-      SyncValidity: $('syncValidity').checked
+      SyncValidity: $('syncValidity').checked,
+      ValidityMaster: $('validityMaster').value
     }
   };
 }
@@ -283,6 +292,7 @@ async function load() {
     const u = cfg.UserSync || {};
     $('syncEnabled').checked = !!u.Enabled;
     $('syncValidity').checked = !!u.SyncValidity;
+    $('validityMaster').value = u.ValidityMaster || 'sql';
     $('syncDirection').value = u.Direction || 'ivms-to-sql';
     $('syncInterval').value = u.IntervalMinutes || 5;
     $('syncValidityYears').value = u.ValidityYears || 10;

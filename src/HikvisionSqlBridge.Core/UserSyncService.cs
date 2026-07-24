@@ -227,7 +227,11 @@ public sealed class UserSyncService
             foreach (var (_, users) in deviceUsers)
                 if (users.TryGetValue(id, out var tu)) observed.Add(tu.ValidEnd!.Value.Date);
 
-            var target = DecideTargetEnd(state.Get(id), observed, today);
+            // Modo "SQL manda": o alvo é sempre a data do SQL; os terminais seguem
+            // (o SQL nunca é reescrito). Modo "ambos": decide pelo lado que mudou.
+            var target = _config.UserSync.ValiditySqlIsMaster
+                ? sqlEnd
+                : DecideTargetEnd(state.Get(id), observed, today);
             bool changedAny = false, allConsistent = true;
 
             // SQL

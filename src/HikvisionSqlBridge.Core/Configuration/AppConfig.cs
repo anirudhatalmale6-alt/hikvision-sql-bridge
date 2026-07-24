@@ -55,12 +55,21 @@ public sealed class UserSyncConfig
     public int ValidityYears { get; set; } = 10;
 
     /// <summary>
-    /// Sincronizar ALTERAÇÕES da data de fim de validade nos dois sentidos
-    /// (SQL &lt;-&gt; terminal). Ao contrário da criação (que só cria o que falta),
-    /// isto acompanha mudanças: se alterar a validade num lado, o outro segue.
-    /// Assim, para dar saída a um funcionário basta mexer num sítio.
+    /// Sincronizar ALTERAÇÕES da data de fim de validade. Ao contrário da criação
+    /// (que só cria o que falta), isto acompanha mudanças: se alterar a validade,
+    /// o(s) terminal(is) seguem. Assim, para dar saída a um funcionário basta
+    /// mexer num sítio.
     /// </summary>
     public bool SyncValidity { get; set; } = false;
+
+    /// <summary>
+    /// Quem manda na data de validade quando os dois lados diferem:
+    /// "sql"  = o SQL manda sempre; os terminais seguem o SQL (regra fixa, previsível); (por omissão)
+    /// "both" = nos dois sentidos — o lado que foi alterado é que manda (com desempate).
+    /// </summary>
+    public string ValidityMaster { get; set; } = "sql";
+
+    public bool ValiditySqlIsMaster => !string.Equals(ValidityMaster, "both", StringComparison.OrdinalIgnoreCase);
 
     public bool DoImportToSql => Direction is "ivms-to-sql" or "both";
     public bool DoExportToTerminal => Direction is "sql-to-ivms" or "both";
