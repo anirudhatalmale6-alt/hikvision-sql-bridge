@@ -90,6 +90,8 @@ public static class ConfigPage
   <fieldset>
     <legend>Sincronização de utilizadores</legend>
     <div class="check"><input type="checkbox" id="syncEnabled"><label for="syncEnabled" style="margin:0"><b>Ativar</b> sincronização automática de utilizadores</label></div>
+    <div class="check"><input type="checkbox" id="syncValidity"><label for="syncValidity" style="margin:0"><b>Sincronizar alterações da data de fim de validade</b> nos dois sentidos (SQL &lt;-&gt; terminal)</label></div>
+    <p class="hint">Com isto ligado, se alterar a data de fim de validade num lado (por ex. dar saída pondo a data de hoje/anterior, ou prolongar), o outro lado é atualizado sozinho. Só tem de mexer num sítio.</p>
     <div class="row">
       <div class="fld"><label>Sentido</label>
         <select id="syncDirection">
@@ -99,7 +101,7 @@ public static class ConfigPage
         </select>
       </div>
       <div class="fld small"><label>Intervalo (minutos)</label><input type="number" id="syncInterval" min="1" value="5"></div>
-      <div class="fld small"><label>Validade (anos)</label><input type="number" id="syncValidity" min="1" value="10"></div>
+      <div class="fld small"><label>Validade (anos)</label><input type="number" id="syncValidityYears" min="1" value="10"></div>
     </div>
     <p class="hint">Só cria o que ainda não existe (pelo ID_NUMERO na TG_FUNCIONARIOS) — nunca altera dados já lá. A impressão digital/face inscreve-se no próprio terminal.</p>
     <details class="adv">
@@ -207,7 +209,8 @@ function buildConfig() {
       IntervalMinutes: parseInt($('syncInterval').value) || 5,
       FuncionariosTable: $('syncFunc').value.trim() || 'TG_FUNCIONARIOS',
       IdentificadoresTable: $('syncIdent').value.trim() || 'TA_IDENTIFICADORES',
-      ValidityYears: parseInt($('syncValidity').value) || 10
+      ValidityYears: parseInt($('syncValidityYears').value) || 10,
+      SyncValidity: $('syncValidity').checked
     }
   };
 }
@@ -279,9 +282,10 @@ async function load() {
 
     const u = cfg.UserSync || {};
     $('syncEnabled').checked = !!u.Enabled;
+    $('syncValidity').checked = !!u.SyncValidity;
     $('syncDirection').value = u.Direction || 'ivms-to-sql';
     $('syncInterval').value = u.IntervalMinutes || 5;
-    $('syncValidity').value = u.ValidityYears || 10;
+    $('syncValidityYears').value = u.ValidityYears || 10;
     $('syncFunc').value = u.FuncionariosTable || 'TG_FUNCIONARIOS';
     $('syncIdent').value = u.IdentificadoresTable || 'TA_IDENTIFICADORES';
 

@@ -15,6 +15,7 @@ namespace HikvisionSqlBridge.Core.Hikvision;
 public sealed class HikvisionUserWriteClient : IDisposable
 {
     private const string RecordPath = "/ISAPI/AccessControl/UserInfo/Record?format=json";
+    private const string ModifyPath = "/ISAPI/AccessControl/UserInfo/Modify?format=json";
 
     private readonly DeviceConfig _device;
     private readonly IAppLogger _log;
@@ -63,6 +64,34 @@ public sealed class HikvisionUserWriteClient : IDisposable
         }
 
         // O terminal responde com statusCode/statusString; 1 = OK.
+        return ResponseIsOk(json);
+    }
+
+    /// <summary>
+    /// Altera um utilizador já existente no terminal (usado para atualizar a data
+    /// de fim de validade). Mantém o nome e a data de início; muda a validade e
+    /// reenvia a permissão de porta para não a perder. Devolve true se o terminal
+    /// aceitou (ou não havia nada para mudar).
+    /// </summary>
+    public async Task<bool> ModifyUserAsync(string employeeNo, string name, DateTime begin, DateTime end, CancellationToken ct)
+    {
+        var url = _device.BaseUrl + ModifyPath;
+        var body = BuildRequest(employeeNo, name, begin, end);
+
+        using var req = new HttpRequestMessage(HttpMethod.Put, url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        using var resp = await _http.SendAsync(req, ct);
+        var json = await resp.Content.ReadAsStringAsync(ct);
+        _log.Raw(_device.DisplayName, json);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            _log.Warn($"Terminal {_device.DisplayName}: falha a alterar utilizador {employeeNo} (HTTP {(int)resp.StatusCode}).");
+            return false;
+        }
+
         return ResponseIsOk(json);
     }
 

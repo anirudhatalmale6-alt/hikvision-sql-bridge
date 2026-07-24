@@ -16,6 +16,14 @@ public sealed class AppConfig
 
     /// <summary>Sincronização automática dos utilizadores (iVMS -> SQL). Fase 2.</summary>
     public UserSyncConfig UserSync { get; set; } = new();
+
+    /// <summary>
+    /// Pasta onde está o config.json (e onde se guarda o estado da sincronização
+    /// de validade). Não é gravada no ficheiro — é preenchida ao carregar, para
+    /// os ficheiros de estado ficarem sempre ao lado do executável/config.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string BaseDirectory { get; set; } = AppContext.BaseDirectory;
 }
 
 /// <summary>
@@ -45,6 +53,14 @@ public sealed class UserSyncConfig
 
     /// <summary>Anos de validade por omissão (fim = início + este valor), quando o terminal não indica.</summary>
     public int ValidityYears { get; set; } = 10;
+
+    /// <summary>
+    /// Sincronizar ALTERAÇÕES da data de fim de validade nos dois sentidos
+    /// (SQL &lt;-&gt; terminal). Ao contrário da criação (que só cria o que falta),
+    /// isto acompanha mudanças: se alterar a validade num lado, o outro segue.
+    /// Assim, para dar saída a um funcionário basta mexer num sítio.
+    /// </summary>
+    public bool SyncValidity { get; set; } = false;
 
     public bool DoImportToSql => Direction is "ivms-to-sql" or "both";
     public bool DoExportToTerminal => Direction is "sql-to-ivms" or "both";

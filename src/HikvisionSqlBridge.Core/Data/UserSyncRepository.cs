@@ -78,6 +78,55 @@ public sealed class UserSyncRepository
         return rows > 0;
     }
 
+    /// <summary>
+    /// Lê a data de fim de validade de cada funcionário no SQL (ID_NUMERO -&gt;
+    /// ID_FIM_VALIDADE da TA_IDENTIFICADORES). Quando um funcionário tem vários
+    /// identificadores, usa a data mais tardia (todos deviam ter a mesma). Só
+    /// entram os que têm data preenchida. Serve para a sincronização de validade.
+    /// </summary>
+    public async Task<Dictionary<int, DateTime>> ReadValidityEndsAsync(CancellationToken ct = default)
+    {
+        var table = QuoteTable(_cfg.IdentificadoresTable);
+        var sql =
+            $"SELECT ID_NUMERO, MAX(ID_FIM_VALIDADE) AS FIM FROM {table} " +
+            $"WHERE ID_FIM_VALIDADE IS NOT NULL GROUP BY ID_NUMERO";
+
+        var map = new Dictionary<int, DateTime>();
+        await using var conn = new SqlConnection(_sql.BuildConnectionString());
+        await conn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (reader.IsDBNull(0) || reader.IsDBNull(1)) continue;
+            var id = Convert.ToInt32(reader.GetValue(0));
+            map[id] = reader.GetDateTime(1);
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// Atualiza a data de fim de validade de um funcionário no SQL, nos dois
+    /// campos que a representam: ID_FIM_VALIDADE (todos os identificadores desse
+    /// ID_NUMERO na TA_IDENTIFICADORES) e ID_LAST_FASE_END (na TG_FUNCIONARIOS),
+    /// mantendo-os coerentes. Devolve o nº de linhas alteradas.
+    /// </summary>
+    public async Task<int> UpdateValidityEndAsync(int idNumero, DateTime fim, CancellationToken ct = default)
+    {
+        var ident = QuoteTable(_cfg.IdentificadoresTable);
+        var func = QuoteTable(_cfg.FuncionariosTable);
+        var sql =
+            $"UPDATE {ident} SET ID_FIM_VALIDADE = @fim WHERE ID_NUMERO = @numero; " +
+            $"UPDATE {func}  SET ID_LAST_FASE_END = @fim WHERE ID_NUMERO = @numero;";
+
+        await using var conn = new SqlConnection(_sql.BuildConnectionString());
+        await conn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add("@fim", System.Data.SqlDbType.DateTime).Value = fim;
+        cmd.Parameters.Add("@numero", System.Data.SqlDbType.Int).Value = idNumero;
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     /// <summary>Lê os funcionários do SQL (para o sentido SQL -> terminais).</summary>
     public async Task<List<FuncionarioRow>> ReadFuncionariosAsync(CancellationToken ct = default)
     {

@@ -25,8 +25,11 @@ public static class ConfigStore
     public static AppConfig Load(string path)
     {
         var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<AppConfig>(json, Options)
+        var cfg = JsonSerializer.Deserialize<AppConfig>(json, Options)
                ?? throw new InvalidOperationException("config.json inválido.");
+        // Os ficheiros de estado (ex.: validade) ficam ao lado do config.json.
+        cfg.BaseDirectory = Path.GetDirectoryName(Path.GetFullPath(path)) ?? cfg.BaseDirectory;
+        return cfg;
     }
 
     /// <summary>Lê o config.json se existir; caso contrário devolve uma configuração vazia.</summary>

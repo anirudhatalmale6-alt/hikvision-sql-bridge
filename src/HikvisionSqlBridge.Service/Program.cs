@@ -12,6 +12,8 @@ using HikvisionSqlBridge.Service;
 // ferramenta funciona em qualquer servidor só editando/gerando este ficheiro.
 var configPath = Path.Combine(ExeDirectory(), "config.json");
 var appConfig = LoadConfig(configPath);
+// Os ficheiros de estado (ex.: validade) ficam ao lado do config.json.
+appConfig.BaseDirectory = Path.GetDirectoryName(configPath) ?? ExeDirectory();
 
 // --------- Modos de teste por linha de comandos (não instalam serviço) ---------
 // Permitem validar a parte de SQL sem precisar de um terminal Hikvision.
@@ -34,6 +36,10 @@ if (args.Length > 0)
         case "--export-users":
             // Sentido SQL -> terminais: cria nos terminais os utilizadores do SQL.
             return await RunExportUsers(appConfig);
+
+        case "--sync-validity":
+            // Sincroniza uma vez as alterações da data de fim de validade (SQL <-> terminais).
+            return await RunSyncValidity(appConfig);
 
         case "--config":
             // Abre a janela de configuração gráfica (no browser, servidor local).
@@ -156,6 +162,24 @@ static async Task<int> RunExportUsers(AppConfig cfg)
     return 0;
 }
 
+static async Task<int> RunSyncValidity(AppConfig cfg)
+{
+    var log = new ConsoleAppLogger();
+    if (cfg.Equipamentos.Count == 0)
+    {
+        Console.WriteLine("Nenhum terminal configurado na secção Equipamentos.");
+        return 2;
+    }
+
+    var repo = new UserSyncRepository(cfg.SqlServer, cfg.UserSync, log);
+    var sync = new UserSyncService(cfg, repo, log);
+
+    Console.WriteLine("Sincronização de validade (SQL <-> terminais): a comparar datas de fim...");
+    var n = await sync.SyncValidityOnceAsync(CancellationToken.None);
+    Console.WriteLine($"Concluído. {n} funcionário(s) com validade atualizada.");
+    return 0;
+}
+
 static VerifyMethod ParseMethod(string s) => s.ToLowerInvariant() switch
 {
     "card" or "rfid" => VerifyMethod.Card,
@@ -180,6 +204,7 @@ static void PrintHelp()
     Console.WriteLine("                               metodo: card|fp|face|pin|nfc|qr|plate");
     Console.WriteLine("  --sync-users                 iVMS -> SQL: cria no SQL os utilizadores dos terminais.");
     Console.WriteLine("  --export-users               SQL -> terminais: cria nos terminais os utilizadores do SQL.");
+    Console.WriteLine("  --sync-validity              Sincroniza a data de fim de validade (SQL <-> terminais).");
     Console.WriteLine("  --config                     Abre a janela de configuração (no browser).");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
 }
