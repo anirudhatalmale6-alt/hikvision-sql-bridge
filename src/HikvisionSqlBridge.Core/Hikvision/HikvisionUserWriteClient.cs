@@ -78,6 +78,12 @@ public sealed class HikvisionUserWriteClient : IDisposable
         var url = _device.BaseUrl + ModifyPath;
         var body = BuildRequest(employeeNo, name, begin, end);
 
+        // Diagnóstico da alteração de validade: regista SEMPRE o pedido e a
+        // resposta (independente de LogRawEvents), porque é a única forma de
+        // perceber, sem o equipamento à frente, porque é que o terminal não
+        // aceita a nova data de fim.
+        _log.Info($"Terminal {_device.DisplayName}: PUT {ModifyPath} utilizador {employeeNo} -> {body}");
+
         using var req = new HttpRequestMessage(HttpMethod.Put, url)
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json"),
@@ -85,6 +91,7 @@ public sealed class HikvisionUserWriteClient : IDisposable
         using var resp = await _http.SendAsync(req, ct);
         var json = await resp.Content.ReadAsStringAsync(ct);
         _log.Raw(_device.DisplayName, json);
+        _log.Info($"Terminal {_device.DisplayName}: resposta Modify utilizador {employeeNo} (HTTP {(int)resp.StatusCode}) -> {json}");
 
         if (!resp.IsSuccessStatusCode)
         {

@@ -194,6 +194,7 @@ public sealed class UserSyncService
         Dictionary<int, DateTime> sqlEnds;
         try { sqlEnds = await _repo.ReadValidityEndsAsync(ct); }
         catch (Exception ex) { _log.Error($"Validade (ler SQL): {ex.Message}"); return 0; }
+        _log.Info($"Validade: {sqlEnds.Count} funcionário(s) com data de fim no SQL ({_config.UserSync.IdentificadoresTable}.ID_FIM_VALIDADE).");
 
         // Lê os utilizadores de cada terminal uma só vez (id -> ficha do terminal).
         var deviceUsers = new List<(DeviceConfig dev, Dictionary<int, TerminalUser> users)>();
@@ -205,10 +206,17 @@ public sealed class UserSyncService
                 using var reader = new HikvisionUserInfoClient(device, _log);
                 var users = await reader.GetAllUsersAsync(ct);
                 var map = new Dictionary<int, TerminalUser>();
+                int semData = 0, naoNumerico = 0;
                 foreach (var u in users)
-                    if (int.TryParse(u.EmployeeNo.Trim(), out var id) && u.ValidEnd.HasValue)
-                        map[id] = u;
+                {
+                    if (!int.TryParse(u.EmployeeNo.Trim(), out var id)) { naoNumerico++; continue; }
+                    if (!u.ValidEnd.HasValue) { semData++; continue; }
+                    map[id] = u;
+                }
                 deviceUsers.Add((device, map));
+                _log.Info($"Validade: terminal {device.DisplayName} -> {users.Count} utilizador(es), {map.Count} com data de fim" +
+                          (semData > 0 ? $", {semData} sem data de fim" : "") +
+                          (naoNumerico > 0 ? $", {naoNumerico} com nº não numérico" : "") + ".");
             }
             catch (Exception ex) { _log.Error($"Validade (ler {device.DisplayName}): {ex.Message}"); }
         }
@@ -216,6 +224,14 @@ public sealed class UserSyncService
         // Só sincroniza quem está no SQL E em algum terminal (a criação é à parte).
         var ids = new HashSet<int>(sqlEnds.Keys);
         ids.IntersectWith(deviceUsers.SelectMany(d => d.users.Keys));
+        if (ids.Count == 0)
+        {
+            _log.Info("Validade: nenhum funcionário coincide entre o SQL e os terminais (nada a sincronizar). " +
+                      "Confirme que o mesmo ID_NUMERO existe nos dois lados e que o terminal tem data de fim de validade definida.");
+            try { state.Save(); } catch { }
+            return 0;
+        }
+        _log.Info($"Validade: {ids.Count} funcionário(s) presentes no SQL e em pelo menos um terminal — a comparar datas.");
 
         int updates = 0;
         foreach (var id in ids)
@@ -250,7 +266,12 @@ public sealed class UserSyncService
             foreach (var (dev, users) in deviceUsers)
             {
                 if (!users.TryGetValue(id, out var tu)) continue;
-                if (tu.ValidEnd!.Value.Date == target) continue;
+                if (tu.ValidEnd!.Value.Date == target)
+                {
+                    _log.Info($"Validade: funcionário {id} em {dev.DisplayName} já tem fim {target:yyyy-MM-dd} (SQL manda) — nada a alterar.");
+                    continue;
+                }
+                _log.Info($"Validade: funcionário {id} em {dev.DisplayName} tem fim {tu.ValidEnd!.Value.Date:yyyy-MM-dd}, SQL diz {target:yyyy-MM-dd} — a atualizar o terminal.");
                 try
                 {
                     using var writer = new HikvisionUserWriteClient(dev, _log);
