@@ -41,6 +41,11 @@ if (args.Length > 0)
             // Sincroniza uma vez as alterações da data de fim de validade (SQL <-> terminais).
             return await RunSyncValidity(appConfig);
 
+        case "--nomes-profissionais":
+            // Preenche o ID_NOME_PROFISSIONAL (primeiro + último nome) na TG_FUNCIONARIOS.
+            // "todos" como 2º argumento -> também substitui os que já têm algo escrito.
+            return await RunFillProfessionalNames(appConfig, args);
+
         case "--config":
             // Abre a janela de configuração gráfica (no browser, servidor local).
             return await ConfigWebApp.RunAsync(configPath);
@@ -180,6 +185,23 @@ static async Task<int> RunSyncValidity(AppConfig cfg)
     return 0;
 }
 
+static async Task<int> RunFillProfessionalNames(AppConfig cfg, string[] args)
+{
+    var log = new ConsoleAppLogger();
+    var overwrite = args.Length >= 2 && args[1].Equals("todos", StringComparison.OrdinalIgnoreCase);
+
+    var repo = new UserSyncRepository(cfg.SqlServer, cfg.UserSync, log);
+    Console.WriteLine("A preencher o ID_NOME_PROFISSIONAL (primeiro + último nome) na " +
+        $"{cfg.UserSync.FuncionariosTable}...");
+    Console.WriteLine(overwrite
+        ? "Modo: TODOS (substitui também os que já têm algo escrito)."
+        : "Modo: só os que estão vazios (não mexe nos que já têm algo).");
+
+    var n = await repo.FillProfessionalNamesAsync(overwrite, CancellationToken.None);
+    Console.WriteLine($"Concluído. {n} funcionário(s) atualizado(s).");
+    return 0;
+}
+
 static VerifyMethod ParseMethod(string s) => s.ToLowerInvariant() switch
 {
     "card" or "rfid" => VerifyMethod.Card,
@@ -205,6 +227,7 @@ static void PrintHelp()
     Console.WriteLine("  --sync-users                 iVMS -> SQL: cria no SQL os utilizadores dos terminais.");
     Console.WriteLine("  --export-users               SQL -> terminais: cria nos terminais os utilizadores do SQL.");
     Console.WriteLine("  --sync-validity              Sincroniza a data de fim de validade (SQL <-> terminais).");
+    Console.WriteLine("  --nomes-profissionais [todos] Preenche ID_NOME_PROFISSIONAL (1º+último nome) na TG_FUNCIONARIOS.");
     Console.WriteLine("  --config                     Abre a janela de configuração (no browser).");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
 }

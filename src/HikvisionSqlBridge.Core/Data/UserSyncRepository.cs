@@ -37,18 +37,75 @@ public sealed class UserSyncRepository
         var sql =
             $"IF NOT EXISTS (SELECT 1 FROM {table} WHERE ID_NUMERO = @numero) " +
             $"  INSERT INTO {table} " +
-            $"    (ID_NUMERO, ID_NOME, ID_ACTIVO, ID_LAST_FASE_START, ID_LAST_FASE_END) " +
-            $"  VALUES (@numero, @nome, 1, @inicio, @fim);";
+            $"    (ID_NUMERO, ID_NOME, ID_NOME_PROFISSIONAL, ID_ACTIVO, ID_LAST_FASE_START, ID_LAST_FASE_END) " +
+            $"  VALUES (@numero, @nome, @nomeprof, 1, @inicio, @fim);";
 
         await using var conn = new SqlConnection(_sql.BuildConnectionString());
         await conn.OpenAsync(ct);
         await using var cmd = new SqlCommand(sql, conn);
         cmd.Parameters.Add("@numero", System.Data.SqlDbType.Int).Value = idNumero;
         cmd.Parameters.Add("@nome", System.Data.SqlDbType.VarChar, 255).Value = (object?)nome ?? DBNull.Value;
+        cmd.Parameters.Add("@nomeprof", System.Data.SqlDbType.VarChar, 255).Value = (object?)ProfessionalName(nome) ?? DBNull.Value;
         cmd.Parameters.Add("@inicio", System.Data.SqlDbType.DateTime).Value = inicio;
         cmd.Parameters.Add("@fim", System.Data.SqlDbType.DateTime).Value = fim;
         var rows = await cmd.ExecuteNonQueryAsync(ct);
         return rows > 0;
+    }
+
+    /// <summary>
+    /// "Nome profissional" = primeiro + último nome, a partir do nome completo.
+    /// Ex.: "Julio Manuel Santos Lopes" -> "Julio Lopes"; "Julio Lopes" -> "Julio
+    /// Lopes"; "Julio" -> "Julio". Vazio devolve vazio.
+    /// </summary>
+    internal static string ProfessionalName(string? nomeCompleto)
+    {
+        if (string.IsNullOrWhiteSpace(nomeCompleto)) return "";
+        var parts = nomeCompleto.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1 ? parts[0] : parts[0] + " " + parts[^1];
+    }
+
+    /// <summary>
+    /// Preenche o ID_NOME_PROFISSIONAL (primeiro + último nome do ID_NOME) nos
+    /// funcionários em que ainda está vazio. Não toca nos que já têm algo escrito,
+    /// para não apagar valores postos à mão. Devolve o nº de linhas preenchidas.
+    /// </summary>
+    public async Task<int> FillProfessionalNamesAsync(bool overwriteExisting, CancellationToken ct = default)
+    {
+        var table = QuoteTable(_cfg.FuncionariosTable);
+        var onlyEmpty = overwriteExisting
+            ? ""
+            : "AND (ID_NOME_PROFISSIONAL IS NULL OR LTRIM(RTRIM(ID_NOME_PROFISSIONAL)) = '') ";
+
+        var sql =
+            $"SELECT ID_NUMERO, ID_NOME FROM {table} " +
+            $"WHERE ID_NOME IS NOT NULL AND LTRIM(RTRIM(ID_NOME)) <> '' {onlyEmpty}";
+
+        var updates = new List<(int id, string prof)>();
+        await using var conn = new SqlConnection(_sql.BuildConnectionString());
+        await conn.OpenAsync(ct);
+        await using (var cmd = new SqlCommand(sql, conn))
+        await using (var reader = await cmd.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                if (reader.IsDBNull(0) || reader.IsDBNull(1)) continue;
+                var id = Convert.ToInt32(reader.GetValue(0));
+                var prof = ProfessionalName(reader.GetString(1));
+                if (!string.IsNullOrEmpty(prof)) updates.Add((id, prof));
+            }
+        }
+
+        int done = 0;
+        foreach (var (id, prof) in updates)
+        {
+            if (ct.IsCancellationRequested) break;
+            var upd = $"UPDATE {table} SET ID_NOME_PROFISSIONAL = @prof WHERE ID_NUMERO = @numero";
+            await using var cmd = new SqlCommand(upd, conn);
+            cmd.Parameters.Add("@prof", System.Data.SqlDbType.VarChar, 255).Value = prof;
+            cmd.Parameters.Add("@numero", System.Data.SqlDbType.Int).Value = id;
+            done += await cmd.ExecuteNonQueryAsync(ct);
+        }
+        return done;
     }
 
     /// <summary>

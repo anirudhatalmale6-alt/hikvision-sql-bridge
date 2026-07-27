@@ -90,6 +90,18 @@ public class ValiditySyncTests
         Assert.Equal(new DateTime(1970, 1, 1), UserSyncService.FloorTerminalBegin(d));
     }
 
+    [Theory]
+    [InlineData("Julio Lopes", "Julio Lopes")]
+    [InlineData("Julio Manuel Santos Lopes", "Julio Lopes")]
+    [InlineData("Julio", "Julio")]
+    [InlineData("  Ana   Maria  Costa  ", "Ana Costa")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void ProfessionalName_FirstPlusLast(string? full, string expected)
+    {
+        Assert.Equal(expected, HikvisionSqlBridge.Core.Data.UserSyncRepository.ProfessionalName(full));
+    }
+
     [Fact]
     public void OnlySqlChanged_SqlWins_ExtendLater()
     {
