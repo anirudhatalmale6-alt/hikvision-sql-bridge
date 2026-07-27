@@ -77,6 +77,20 @@ public class ValiditySyncTests
     }
 
     [Fact]
+    public void FloorTerminalBegin_NormalDate_Unchanged()
+    {
+        var d = new DateTime(2026, 7, 21);
+        Assert.Equal(d.Date, UserSyncService.FloorTerminalBegin(d));
+    }
+
+    [Fact]
+    public void FloorTerminalBegin_BeforeEpoch_RaisedTo1970()
+    {
+        var d = new DateTime(1900, 1, 1);
+        Assert.Equal(new DateTime(1970, 1, 1), UserSyncService.FloorTerminalBegin(d));
+    }
+
+    [Fact]
     public void OnlySqlChanged_SqlWins_ExtendLater()
     {
         var last = new DateTime(2027, 1, 1);

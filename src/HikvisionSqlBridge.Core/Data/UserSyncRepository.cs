@@ -107,6 +107,32 @@ public sealed class UserSyncRepository
     }
 
     /// <summary>
+    /// Lê a data de INÍCIO de validade de cada funcionário no SQL (ID_NUMERO -&gt;
+    /// ID_LAST_FASE_START da TG_FUNCIONARIOS). Serve para o terminal seguir também
+    /// a data de início (não só o fim). Só entram os que têm data preenchida.
+    /// </summary>
+    public async Task<Dictionary<int, DateTime>> ReadValidityStartsAsync(CancellationToken ct = default)
+    {
+        var table = QuoteTable(_cfg.FuncionariosTable);
+        var sql =
+            $"SELECT ID_NUMERO, ID_LAST_FASE_START FROM {table} " +
+            $"WHERE ID_LAST_FASE_START IS NOT NULL";
+
+        var map = new Dictionary<int, DateTime>();
+        await using var conn = new SqlConnection(_sql.BuildConnectionString());
+        await conn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            if (reader.IsDBNull(0) || reader.IsDBNull(1)) continue;
+            var id = Convert.ToInt32(reader.GetValue(0));
+            map[id] = reader.GetDateTime(1);
+        }
+        return map;
+    }
+
+    /// <summary>
     /// Atualiza a data de fim de validade de um funcionário no SQL, nos dois
     /// campos que a representam: ID_FIM_VALIDADE (todos os identificadores desse
     /// ID_NUMERO na TA_IDENTIFICADORES) e ID_LAST_FASE_END (na TG_FUNCIONARIOS),

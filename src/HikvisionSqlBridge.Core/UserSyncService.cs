@@ -192,9 +192,15 @@ public sealed class UserSyncService
         var state = ValiditySyncState.Load(_validityStatePath);
 
         Dictionary<int, DateTime> sqlEnds;
-        try { sqlEnds = await _repo.ReadValidityEndsAsync(ct); }
+        Dictionary<int, DateTime> sqlStarts;
+        try
+        {
+            sqlEnds = await _repo.ReadValidityEndsAsync(ct);
+            sqlStarts = await _repo.ReadValidityStartsAsync(ct);
+        }
         catch (Exception ex) { _log.Error($"Validade (ler SQL): {ex.Message}"); return 0; }
-        _log.Info($"Validade: {sqlEnds.Count} funcionário(s) com data de fim no SQL ({_config.UserSync.FuncionariosTable}.ID_LAST_FASE_END).");
+        _log.Info($"Validade: {sqlEnds.Count} funcionário(s) com data de fim no SQL ({_config.UserSync.FuncionariosTable}.ID_LAST_FASE_END); " +
+                  $"{sqlStarts.Count} com data de início (ID_LAST_FASE_START).");
 
         // Lê os utilizadores de cada terminal uma só vez (id -> ficha do terminal).
         var deviceUsers = new List<(DeviceConfig dev, Dictionary<int, TerminalUser> users)>();
@@ -267,28 +273,38 @@ public sealed class UserSyncService
                 catch (Exception ex) { _log.Error($"Validade (gravar SQL {id}): {ex.Message}"); allConsistent = false; }
             }
 
+            // A data de INÍCIO também segue o SQL (ID_LAST_FASE_START), quando existe.
+            // Assim o terminal fica com a janela de validade completa igual à do SQL.
+            DateTime? sqlStart = sqlStarts.TryGetValue(id, out var ss) ? ss.Date : null;
+
             // Terminais
             foreach (var (dev, users) in deviceUsers)
             {
                 if (!users.TryGetValue(id, out var tu)) continue;
-                if (tu.ValidEnd!.Value.Date == terminalEnd.Date)
+
+                var currentBegin = (tu.ValidBegin ?? today).Date;
+                // Início alvo: o do SQL se existir, senão mantém o do terminal.
+                // Nunca antes de 1970 (limite do terminal) nem depois do fim (janela
+                // inválida — acontece ao dar saída com data no passado).
+                var beginTarget = ClampBeginToEnd(FloorTerminalBegin(sqlStart ?? currentBegin), terminalEnd);
+                var currentEnd = tu.ValidEnd!.Value.Date;
+
+                bool endOk = currentEnd == terminalEnd.Date;
+                bool beginOk = currentBegin == beginTarget;
+                if (endOk && beginOk)
                 {
-                    _log.Info($"Validade: funcionário {id} em {dev.DisplayName} já tem fim {terminalEnd:yyyy-MM-dd} (SQL manda) — nada a alterar.");
+                    _log.Info($"Validade: funcionário {id} em {dev.DisplayName} já tem início {beginTarget:yyyy-MM-dd} e fim {terminalEnd:yyyy-MM-dd} (SQL manda) — nada a alterar.");
                     continue;
                 }
-                _log.Info($"Validade: funcionário {id} em {dev.DisplayName} tem fim {tu.ValidEnd!.Value.Date:yyyy-MM-dd}, SQL diz {terminalEnd:yyyy-MM-dd} — a atualizar o terminal.");
+                _log.Info($"Validade: funcionário {id} em {dev.DisplayName} — terminal início {currentBegin:yyyy-MM-dd}/fim {currentEnd:yyyy-MM-dd}, " +
+                          $"SQL diz início {beginTarget:yyyy-MM-dd}/fim {terminalEnd:yyyy-MM-dd} — a atualizar o terminal.");
                 try
                 {
                     using var writer = new HikvisionUserWriteClient(dev, _log);
-                    // O terminal recusa uma validade em que o inicio fique DEPOIS do
-                    // fim (ex.: dar saida com data no passado, mas o inicio no terminal
-                    // e' de 2026). Nesse caso baixamos o inicio para a data de fim, para
-                    // a janela ficar valida e totalmente no passado = sem acesso.
-                    var begin = ClampBeginToEnd(tu.ValidBegin ?? today, terminalEnd);
                     var endDt = terminalEnd.Date.AddHours(23).AddMinutes(59).AddSeconds(59); // fim do dia (inclusivo)
-                    if (await writer.ModifyUserAsync(tu.EmployeeNo, tu.Name, begin, endDt, ct))
+                    if (await writer.ModifyUserAsync(tu.EmployeeNo, tu.Name, beginTarget, endDt, ct))
                     {
-                        _log.Info($"Validade terminal {dev.DisplayName} atualizada: {tu.EmployeeNo} -> fim {terminalEnd:yyyy-MM-dd}.");
+                        _log.Info($"Validade terminal {dev.DisplayName} atualizada: {tu.EmployeeNo} -> início {beginTarget:yyyy-MM-dd}, fim {terminalEnd:yyyy-MM-dd}.");
                         changedAny = true;
                     }
                     else allConsistent = false;
@@ -336,6 +352,17 @@ public sealed class UserSyncService
     /// </summary>
     internal static DateTime ClampBeginToEnd(DateTime begin, DateTime end)
         => begin.Date > end.Date ? end.Date : begin.Date;
+
+    /// <summary>
+    /// Data de início mínima que o terminal aceita (relógio de 32 bits começa em
+    /// 1970). Uma data de início mais antiga que isto (ou "vazia" no SQL) é subida
+    /// para este mínimo, para o terminal não recusar.
+    /// </summary>
+    internal static readonly DateTime TerminalMinBegin = new(1970, 1, 1);
+
+    /// <summary>Sobe o início para o mínimo que o terminal aceita, se for anterior.</summary>
+    internal static DateTime FloorTerminalBegin(DateTime begin)
+        => begin.Date < TerminalMinBegin ? TerminalMinBegin : begin.Date;
 
     internal static DateTime DecideTargetEnd(DateTime? last, IReadOnlyList<DateTime> observed, DateTime today)
     {
