@@ -52,6 +52,31 @@ public class ValiditySyncTests
     }
 
     [Fact]
+    public void ClampBeginToEnd_OffboardPastEnd_LowersBeginToEnd()
+    {
+        // Dar saída: fim em 2019, mas o início no terminal e' de 2026 -> inválido.
+        var begin = new DateTime(2026, 7, 21);
+        var end = new DateTime(2019, 5, 18);
+        Assert.Equal(end.Date, UserSyncService.ClampBeginToEnd(begin, end));
+    }
+
+    [Fact]
+    public void ClampBeginToEnd_NormalExtend_BeginUnchanged()
+    {
+        // Prolongar: fim em 2030, início 2026 -> janela válida, início fica igual.
+        var begin = new DateTime(2026, 7, 21);
+        var end = new DateTime(2030, 12, 31);
+        Assert.Equal(begin.Date, UserSyncService.ClampBeginToEnd(begin, end));
+    }
+
+    [Fact]
+    public void ClampBeginToEnd_SameDay_Unchanged()
+    {
+        var d = new DateTime(2026, 7, 27);
+        Assert.Equal(d.Date, UserSyncService.ClampBeginToEnd(d, d));
+    }
+
+    [Fact]
     public void OnlySqlChanged_SqlWins_ExtendLater()
     {
         var last = new DateTime(2027, 1, 1);

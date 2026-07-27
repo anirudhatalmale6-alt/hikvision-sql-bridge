@@ -99,7 +99,7 @@ public static class ConfigPage
         </select>
       </div>
     </div>
-    <p class="hint">Com "O SQL manda", a data de validade é sempre a que estiver no SQL (ID_FIM_VALIDADE) e os terminais são atualizados para essa data. Para dar saída ou prolongar, altera-se só no SQL. Regra fixa e previsível.</p>
+    <p class="hint">Com "O SQL manda", a data de validade é sempre a que estiver no SQL (campo ID_LAST_FASE_END da TG_FUNCIONARIOS) e os terminais são atualizados para essa data. Para dar saída ou prolongar, altera-se só no SQL. Regra fixa e previsível.</p>
     <div class="row">
       <div class="fld"><label>Sentido</label>
         <select id="syncDirection">

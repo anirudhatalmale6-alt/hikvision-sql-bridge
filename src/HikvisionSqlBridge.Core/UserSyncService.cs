@@ -280,7 +280,11 @@ public sealed class UserSyncService
                 try
                 {
                     using var writer = new HikvisionUserWriteClient(dev, _log);
-                    var begin = tu.ValidBegin ?? today;
+                    // O terminal recusa uma validade em que o inicio fique DEPOIS do
+                    // fim (ex.: dar saida com data no passado, mas o inicio no terminal
+                    // e' de 2026). Nesse caso baixamos o inicio para a data de fim, para
+                    // a janela ficar valida e totalmente no passado = sem acesso.
+                    var begin = ClampBeginToEnd(tu.ValidBegin ?? today, terminalEnd);
                     var endDt = terminalEnd.Date.AddHours(23).AddMinutes(59).AddSeconds(59); // fim do dia (inclusivo)
                     if (await writer.ModifyUserAsync(tu.EmployeeNo, tu.Name, begin, endDt, ct))
                     {
@@ -324,6 +328,14 @@ public sealed class UserSyncService
     /// </summary>
     internal static DateTime ClampTerminalEnd(DateTime end)
         => end.Date > TerminalMaxEnd ? TerminalMaxEnd : end.Date;
+
+    /// <summary>
+    /// Garante que o início da validade nunca fica depois do fim — o terminal
+    /// recusa uma janela invertida. Ao dar saída (fim no passado), baixa o início
+    /// para a data de fim, deixando a janela válida e totalmente no passado.
+    /// </summary>
+    internal static DateTime ClampBeginToEnd(DateTime begin, DateTime end)
+        => begin.Date > end.Date ? end.Date : begin.Date;
 
     internal static DateTime DecideTargetEnd(DateTime? last, IReadOnlyList<DateTime> observed, DateTime today)
     {
