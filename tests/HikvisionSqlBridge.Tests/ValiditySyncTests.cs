@@ -22,6 +22,36 @@ public class ValiditySyncTests
     }
 
     [Fact]
+    public void ClampTerminalEnd_NormalDate_Unchanged()
+    {
+        var d = new DateTime(2030, 5, 12);
+        Assert.Equal(d.Date, UserSyncService.ClampTerminalEnd(d));
+    }
+
+    [Fact]
+    public void ClampTerminalEnd_FarFutureDate_CappedTo2037()
+    {
+        // Data "permanente" (ex.: ID_FIM_VALIDADE = 2090) que o terminal recusa.
+        var d = new DateTime(2090, 5, 12);
+        Assert.Equal(new DateTime(2037, 12, 31), UserSyncService.ClampTerminalEnd(d));
+    }
+
+    [Fact]
+    public void ClampTerminalEnd_ExactlyMax_Unchanged()
+    {
+        var d = new DateTime(2037, 12, 31);
+        Assert.Equal(d, UserSyncService.ClampTerminalEnd(d));
+    }
+
+    [Fact]
+    public void ClampTerminalEnd_PastDate_Unchanged()
+    {
+        // Saída de funcionário: data no passado nunca é limitada.
+        var d = new DateTime(2026, 7, 24);
+        Assert.Equal(d.Date, UserSyncService.ClampTerminalEnd(d));
+    }
+
+    [Fact]
     public void OnlySqlChanged_SqlWins_ExtendLater()
     {
         var last = new DateTime(2027, 1, 1);

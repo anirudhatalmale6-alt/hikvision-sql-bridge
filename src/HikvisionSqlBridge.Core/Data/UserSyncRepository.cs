@@ -80,16 +80,17 @@ public sealed class UserSyncRepository
 
     /// <summary>
     /// Lê a data de fim de validade de cada funcionário no SQL (ID_NUMERO -&gt;
-    /// ID_FIM_VALIDADE da TA_IDENTIFICADORES). Quando um funcionário tem vários
-    /// identificadores, usa a data mais tardia (todos deviam ter a mesma). Só
-    /// entram os que têm data preenchida. Serve para a sincronização de validade.
+    /// ID_LAST_FASE_END da TG_FUNCIONARIOS). É este o campo que manda na validade
+    /// (indicado pelo cliente): a TA_IDENTIFICADORES pode ter uma data "permanente"
+    /// muito distante (ex.: 2090) que não representa a validade real e que os
+    /// terminais nem sequer aceitam. Só entram os que têm data preenchida.
     /// </summary>
     public async Task<Dictionary<int, DateTime>> ReadValidityEndsAsync(CancellationToken ct = default)
     {
-        var table = QuoteTable(_cfg.IdentificadoresTable);
+        var table = QuoteTable(_cfg.FuncionariosTable);
         var sql =
-            $"SELECT ID_NUMERO, MAX(ID_FIM_VALIDADE) AS FIM FROM {table} " +
-            $"WHERE ID_FIM_VALIDADE IS NOT NULL GROUP BY ID_NUMERO";
+            $"SELECT ID_NUMERO, ID_LAST_FASE_END FROM {table} " +
+            $"WHERE ID_LAST_FASE_END IS NOT NULL";
 
         var map = new Dictionary<int, DateTime>();
         await using var conn = new SqlConnection(_sql.BuildConnectionString());

@@ -194,7 +194,7 @@ public sealed class UserSyncService
         Dictionary<int, DateTime> sqlEnds;
         try { sqlEnds = await _repo.ReadValidityEndsAsync(ct); }
         catch (Exception ex) { _log.Error($"Validade (ler SQL): {ex.Message}"); return 0; }
-        _log.Info($"Validade: {sqlEnds.Count} funcionário(s) com data de fim no SQL ({_config.UserSync.IdentificadoresTable}.ID_FIM_VALIDADE).");
+        _log.Info($"Validade: {sqlEnds.Count} funcionário(s) com data de fim no SQL ({_config.UserSync.FuncionariosTable}.ID_LAST_FASE_END).");
 
         // Lê os utilizadores de cada terminal uma só vez (id -> ficha do terminal).
         var deviceUsers = new List<(DeviceConfig dev, Dictionary<int, TerminalUser> users)>();
@@ -248,6 +248,11 @@ public sealed class UserSyncService
             var target = _config.UserSync.ValiditySqlIsMaster
                 ? sqlEnd
                 : DecideTargetEnd(state.Get(id), observed, today);
+            // Os terminais Hikvision/Safire só aceitam datas até 2037 (limite do
+            // relógio interno de 32 bits; acima disso devolvem "timeFormatError").
+            // Uma data "permanente" muito distante no SQL é enviada ao terminal
+            // como a data máxima que ele aceita — equivale a "sem fim".
+            var terminalEnd = ClampTerminalEnd(target);
             bool changedAny = false, allConsistent = true;
 
             // SQL
@@ -266,20 +271,20 @@ public sealed class UserSyncService
             foreach (var (dev, users) in deviceUsers)
             {
                 if (!users.TryGetValue(id, out var tu)) continue;
-                if (tu.ValidEnd!.Value.Date == target)
+                if (tu.ValidEnd!.Value.Date == terminalEnd.Date)
                 {
-                    _log.Info($"Validade: funcionário {id} em {dev.DisplayName} já tem fim {target:yyyy-MM-dd} (SQL manda) — nada a alterar.");
+                    _log.Info($"Validade: funcionário {id} em {dev.DisplayName} já tem fim {terminalEnd:yyyy-MM-dd} (SQL manda) — nada a alterar.");
                     continue;
                 }
-                _log.Info($"Validade: funcionário {id} em {dev.DisplayName} tem fim {tu.ValidEnd!.Value.Date:yyyy-MM-dd}, SQL diz {target:yyyy-MM-dd} — a atualizar o terminal.");
+                _log.Info($"Validade: funcionário {id} em {dev.DisplayName} tem fim {tu.ValidEnd!.Value.Date:yyyy-MM-dd}, SQL diz {terminalEnd:yyyy-MM-dd} — a atualizar o terminal.");
                 try
                 {
                     using var writer = new HikvisionUserWriteClient(dev, _log);
                     var begin = tu.ValidBegin ?? today;
-                    var endDt = target.AddHours(23).AddMinutes(59).AddSeconds(59); // fim do dia (inclusivo)
+                    var endDt = terminalEnd.Date.AddHours(23).AddMinutes(59).AddSeconds(59); // fim do dia (inclusivo)
                     if (await writer.ModifyUserAsync(tu.EmployeeNo, tu.Name, begin, endDt, ct))
                     {
-                        _log.Info($"Validade terminal {dev.DisplayName} atualizada: {tu.EmployeeNo} -> fim {target:yyyy-MM-dd}.");
+                        _log.Info($"Validade terminal {dev.DisplayName} atualizada: {tu.EmployeeNo} -> fim {terminalEnd:yyyy-MM-dd}.");
                         changedAny = true;
                     }
                     else allConsistent = false;
@@ -305,6 +310,21 @@ public sealed class UserSyncService
     /// uma data já no passado (saída) manda sempre — a mais antiga, mais
     /// restritiva; caso contrário fica a data mais tardia (prolongamento).
     /// </summary>
+    /// <summary>
+    /// Ano máximo que os terminais Hikvision/Safire aceitam na validade. O relógio
+    /// interno é de 32 bits (segundos desde 1970), que estoura em 2038 — por isso
+    /// datas de 2038 ou mais são recusadas com "timeFormatError". Uma data mais
+    /// distante que isto é tratada como "permanente" e enviada como o máximo aceite.
+    /// </summary>
+    internal static readonly DateTime TerminalMaxEnd = new(2037, 12, 31);
+
+    /// <summary>
+    /// Limita a data de fim ao que o terminal consegue guardar (ver
+    /// <see cref="TerminalMaxEnd"/>). Datas normais passam intactas.
+    /// </summary>
+    internal static DateTime ClampTerminalEnd(DateTime end)
+        => end.Date > TerminalMaxEnd ? TerminalMaxEnd : end.Date;
+
     internal static DateTime DecideTargetEnd(DateTime? last, IReadOnlyList<DateTime> observed, DateTime today)
     {
         var distinct = observed.Select(d => d.Date).Distinct().ToList();
