@@ -51,6 +51,10 @@ public sealed class UserSyncService
                     var n = await SyncValidityOnceAsync(ct);
                     if (n > 0) _log.Info($"Validade sincronizada: {n} atualização(ões).");
                 }
+                // Preenche o Nome Profissional (1º + último nome) onde estiver em
+                // branco. Automático, sem substituir os que já têm algo escrito.
+                var np = await _repo.FillProfessionalNamesAsync(overwriteExisting: false, ct);
+                if (np > 0) _log.Info($"Nome profissional preenchido automaticamente: {np} funcionário(s).");
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception ex) { _log.Error($"Sincronização de utilizadores: {ex.Message}"); }
