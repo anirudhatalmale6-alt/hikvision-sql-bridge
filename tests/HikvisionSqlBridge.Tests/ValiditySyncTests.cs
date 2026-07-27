@@ -102,6 +102,23 @@ public class ValiditySyncTests
         Assert.Equal(expected, HikvisionSqlBridge.Core.Data.UserSyncRepository.ProfessionalName(full));
     }
 
+    [Theory]
+    // Escolhas válidas (só palavras do nome completo) -> NÃO tocar.
+    [InlineData("Sofia Ribeiro", "Ana Sofia Ribeiro Martins", true)]
+    [InlineData("Ana Martins", "Ana Sofia Ribeiro Martins", true)]
+    [InlineData("Ana", "Ana Sofia Ribeiro Martins", true)]
+    [InlineData("sofia ribeiro", "Ana Sofia Ribeiro Martins", true)] // sem distinção de maiúsculas
+    // Não é o nome (placeholder/estranho) ou vazio -> deve preencher.
+    [InlineData("Teste", "Ana Sofia Ribeiro Martins", false)]
+    [InlineData("Sofia Silva", "Ana Sofia Ribeiro Martins", false)] // "Silva" não está no nome
+    [InlineData("", "Ana Sofia Ribeiro Martins", false)]
+    [InlineData(null, "Ana Sofia Ribeiro Martins", false)]
+    public void ProfessionalNameUsesOnlyNameWords_Cases(string? prof, string nome, bool expected)
+    {
+        Assert.Equal(expected,
+            HikvisionSqlBridge.Core.Data.UserSyncRepository.ProfessionalNameUsesOnlyNameWords(prof, nome));
+    }
+
     [Fact]
     public void OnlySqlChanged_SqlWins_ExtendLater()
     {

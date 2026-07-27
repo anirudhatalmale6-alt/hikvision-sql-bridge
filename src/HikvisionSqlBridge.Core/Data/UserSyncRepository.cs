@@ -65,20 +65,36 @@ public sealed class UserSyncRepository
     }
 
     /// <summary>
-    /// Preenche o ID_NOME_PROFISSIONAL (primeiro + último nome do ID_NOME) nos
-    /// funcionários em que ainda está vazio. Não toca nos que já têm algo escrito,
-    /// para não apagar valores postos à mão. Devolve o nº de linhas preenchidas.
+    /// Diz se o nome profissional já é uma escolha válida: usa APENAS palavras que
+    /// existem no nome completo (ID_NOME). Ex.: nome "Ana Sofia Ribeiro Martins" ->
+    /// "Sofia Ribeiro" é válido (o responsável escolheu esse a mão), "Ana Martins"
+    /// também; mas "Teste" ou vazio não são. Serve para respeitar as escolhas
+    /// manuais e só mexer nas que estão vazias ou com algo que não é o nome.
+    /// </summary>
+    internal static bool ProfessionalNameUsesOnlyNameWords(string? prof, string? nomeCompleto)
+    {
+        if (string.IsNullOrWhiteSpace(prof) || string.IsNullOrWhiteSpace(nomeCompleto)) return false;
+        var nameWords = new HashSet<string>(
+            nomeCompleto.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries),
+            StringComparer.OrdinalIgnoreCase);
+        var profWords = prof.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return profWords.Length > 0 && profWords.All(w => nameWords.Contains(w));
+    }
+
+    /// <summary>
+    /// Preenche o ID_NOME_PROFISSIONAL (primeiro + último nome do ID_NOME).
+    /// Regra normal (overwriteExisting=false): só mexe quando está EM BRANCO ou
+    /// quando o que lá está não é o nome (tem palavras que não existem no ID_NOME,
+    /// ex.: "Teste"). Se o responsável tiver posto um nome válido — só com palavras
+    /// do próprio nome, ex.: "Sofia Ribeiro" — NÃO lhe toca. Com overwriteExisting=
+    /// true força primeiro+último em todos. Devolve o nº de linhas alteradas.
     /// </summary>
     public async Task<int> FillProfessionalNamesAsync(bool overwriteExisting, CancellationToken ct = default)
     {
         var table = QuoteTable(_cfg.FuncionariosTable);
-        var onlyEmpty = overwriteExisting
-            ? ""
-            : "AND (ID_NOME_PROFISSIONAL IS NULL OR LTRIM(RTRIM(ID_NOME_PROFISSIONAL)) = '') ";
-
         var sql =
-            $"SELECT ID_NUMERO, ID_NOME FROM {table} " +
-            $"WHERE ID_NOME IS NOT NULL AND LTRIM(RTRIM(ID_NOME)) <> '' {onlyEmpty}";
+            $"SELECT ID_NUMERO, ID_NOME, ID_NOME_PROFISSIONAL FROM {table} " +
+            $"WHERE ID_NOME IS NOT NULL AND LTRIM(RTRIM(ID_NOME)) <> ''";
 
         var updates = new List<(int id, string prof)>();
         await using var conn = new SqlConnection(_sql.BuildConnectionString());
@@ -90,8 +106,16 @@ public sealed class UserSyncRepository
             {
                 if (reader.IsDBNull(0) || reader.IsDBNull(1)) continue;
                 var id = Convert.ToInt32(reader.GetValue(0));
-                var prof = ProfessionalName(reader.GetString(1));
-                if (!string.IsNullOrEmpty(prof)) updates.Add((id, prof));
+                var nome = reader.GetString(1);
+                var atual = reader.IsDBNull(2) ? "" : reader.GetString(2);
+
+                // No modo normal, respeita uma escolha válida já feita à mão.
+                if (!overwriteExisting && ProfessionalNameUsesOnlyNameWords(atual, nome))
+                    continue;
+
+                var prof = ProfessionalName(nome);
+                if (!string.IsNullOrEmpty(prof) && !string.Equals(prof, atual?.Trim(), StringComparison.Ordinal))
+                    updates.Add((id, prof));
             }
         }
 
