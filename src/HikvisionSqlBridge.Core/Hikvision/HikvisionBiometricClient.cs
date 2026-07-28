@@ -54,27 +54,48 @@ public sealed class HikvisionBiometricClient : IDisposable
     public async Task<List<FingerTemplate>> DownloadFingerprintsAsync(string employeeNo, CancellationToken ct)
     {
         // O nó do pedido varia com o firmware: uns querem "FingerPrintCond",
-        // outros "FingerPrintCfg" (o V4.38 do DS-K1T342 pede este último). Tenta
-        // os dois e fica com o que devolver digitais.
+        // outros "FingerPrintCfg" (o V4.38 do DS-K1T342 pede este último). E o
+        // fingerPrintID=0 ("todos") é recusado por este firmware. Por isso, para
+        // cada nó, tenta primeiro SEM fingerPrintID (todas de uma vez) e, se isso
+        // não devolver nada, vai dedo a dedo (1..10).
         foreach (var node in new[] { "FingerPrintCfg", "FingerPrintCond" })
         {
-            var body =
-                "{\"" + node + "\":{" +
-                "\"searchID\":\"SIBHIK\"," +
-                $"\"employeeNo\":\"{employeeNo}\"," +
-                "\"enableCardReader\":[1]," +
-                "\"cardReaderNo\":1," +
-                "\"fingerPrintID\":0" +
-                "}}";
+            var all = ParseFingerprints(
+                await PostAsync(FingerPrintDownloadPath, FingerCondBody(node, employeeNo, null), ct) ?? "",
+                employeeNo);
+            if (all.Count > 0)
+                return all;
 
-            var json = await PostAsync("/ISAPI/AccessControl/FingerPrintDownload?format=json", body, ct);
-            if (json is null) continue;
-
-            var list = ParseFingerprints(json, employeeNo);
-            if (list.Count > 0)
-                return list;
+            var collected = new List<FingerTemplate>();
+            var seen = new HashSet<int>();
+            for (int fid = 1; fid <= 10; fid++)
+            {
+                var one = ParseFingerprints(
+                    await PostAsync(FingerPrintDownloadPath, FingerCondBody(node, employeeNo, fid), ct) ?? "",
+                    employeeNo);
+                foreach (var f in one)
+                    if (seen.Add(f.FingerPrintId))
+                        collected.Add(f);
+            }
+            if (collected.Count > 0)
+                return collected;
         }
         return new List<FingerTemplate>();
+    }
+
+    private const string FingerPrintDownloadPath = "/ISAPI/AccessControl/FingerPrintDownload?format=json";
+
+    private static string FingerCondBody(string node, string employeeNo, int? fingerPrintId)
+    {
+        var fp = fingerPrintId.HasValue ? $",\"fingerPrintID\":{fingerPrintId.Value}" : "";
+        return
+            "{\"" + node + "\":{" +
+            "\"searchID\":\"SIBHIK\"," +
+            $"\"employeeNo\":\"{employeeNo}\"," +
+            "\"enableCardReader\":[1]," +
+            "\"cardReaderNo\":1" +
+            fp +
+            "}}";
     }
 
     private List<FingerTemplate> ParseFingerprints(string json, string employeeNo)
