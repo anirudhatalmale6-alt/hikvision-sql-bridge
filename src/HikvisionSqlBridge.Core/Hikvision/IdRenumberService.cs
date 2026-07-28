@@ -177,27 +177,29 @@ public sealed class IdRenumberService
             if (!faceMoved) faceProblem = true;
         }
 
-        // 5) VERIFICAR o destino antes de apagar o antigo.
-        // O que TEM de estar no destino é o que a origem tinha. Usamos o maior de:
-        // (a) o que o próprio terminal declara na lista para o número antigo
-        //     (numOfFP/numOfFace/numOfCard) e (b) o que conseguimos ler. Assim, se
-        //     por acaso não conseguíssemos ler as biometrias da origem, a verificação
-        //     não passa e o antigo NÃO é apagado — nunca se perde nada.
-        int expFps = Math.Max(source.NumFingerprints, oldFps.Count);
+        // 5) VERIFICAR o destino antes de apagar o antigo. O que TEM de estar no
+        // destino é o que conseguimos LER da origem. Para cartões e face usamos
+        // também o contador que o terminal declara (mais seguro). Para as digitais
+        // usamos o que lemos mesmo (o contador da lista às vezes conta a mais),
+        // mas com uma salvaguarda: se o terminal diz que há digitais e nós não
+        // conseguimos ler nenhuma, é sinal de falha de leitura -> NÃO apaga.
+        int expFps = oldFps.Count;
         int expCards = Math.Max(source.NumCards, oldCards.Count);
         int expFaces = Math.Max(source.NumFaces, oldFaces);
+        bool fpReadSuspeita = source.NumFingerprints > 0 && oldFps.Count == 0;
 
         var verFps = (await bio.DownloadFingerprintsAsync(p.NewNo, ct)).Count;
         var verCards = (await bio.GetCardsAsync(p.NewNo, ct)).Count;
         var verFaces = await bio.CountFacesAsync(p.NewNo, fdid, ct);
 
-        bool ok = verFps >= expFps && verCards >= expCards && verFaces >= expFaces;
+        bool ok = !fpReadSuspeita && verFps >= expFps && verCards >= expCards && verFaces >= expFaces;
 
         if (!ok)
         {
             return new MigrationResult(p.OldNo, p.NewNo, fpMoved, cardsMoved, faceMoved, false, false,
                 $"verificacao falhou (destino tem {verFps} digitais / {verCards} cartoes / {verFaces} face; " +
                 $"a origem precisava de {expFps}/{expCards}/{expFaces}). Antigo MANTIDO — nada perdido." +
+                (fpReadSuspeita ? $" (o terminal diz que o {p.OldNo} tem {source.NumFingerprints} digital(is) mas nao consegui le-las)" : "") +
                 (faceProblem ? " A face nao passou." : ""));
         }
 

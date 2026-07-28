@@ -53,42 +53,41 @@ public sealed class HikvisionBiometricClient : IDisposable
     /// <summary>Lê as impressões digitais gravadas num número de utilizador.</summary>
     public async Task<List<FingerTemplate>> DownloadFingerprintsAsync(string employeeNo, CancellationToken ct)
     {
-        // Este firmware (V4.38) exige o registo completo no pedido: employeeNo,
-        // enableCardReader, fingerPrintID E fingerType. Não é uma "lista" — é uma
-        // consulta por dedo. Por isso vamos dedo a dedo (1..10) e recolhemos os que
-        // tiverem digital gravada. O nó pode ser "FingerPrintCfg" (este modelo) ou
-        // "FingerPrintCond" (outros firmwares).
-        foreach (var node in new[] { "FingerPrintCfg", "FingerPrintCond" })
+        // Neste firmware (V4.38) a LEITURA das digitais é por FingerPrintUpload — o
+        // equipamento "sobe" os dados para nós — com o nó FingerPrintCond. (O nome
+        // está invertido face aos manuais: aqui "Upload" = ler, "Download" = gravar.)
+        // A consulta sem fingerPrintID costuma trazer só um dedo, por isso também
+        // percorremos os dedos (1..10) e juntamos todos, sem repetir.
+        var collected = new List<FingerTemplate>();
+        var seen = new HashSet<int>();
+
+        async Task Query(int? fingerId)
         {
-            var collected = new List<FingerTemplate>();
-            var seen = new HashSet<int>();
-            for (int fid = 1; fid <= 10; fid++)
-            {
-                var one = ParseFingerprints(
-                    await PostAsync(FingerPrintDownloadPath, FingerCondBody(node, employeeNo, fid), ct) ?? "",
-                    employeeNo);
-                foreach (var f in one)
-                    if (seen.Add(f.FingerPrintId))
-                        collected.Add(f);
-            }
-            if (collected.Count > 0)
-                return collected;
+            var json = await PostAsync("/ISAPI/AccessControl/FingerPrintUpload?format=json",
+                FingerReadCond(employeeNo, fingerId), ct);
+            if (json is null) return;
+            foreach (var f in ParseFingerprints(json, employeeNo))
+                if (seen.Add(f.FingerPrintId))
+                    collected.Add(f);
         }
-        return new List<FingerTemplate>();
+
+        await Query(null);
+        for (int fid = 1; fid <= 10; fid++)
+            await Query(fid);
+
+        return collected;
     }
 
-    private const string FingerPrintDownloadPath = "/ISAPI/AccessControl/FingerPrintDownload?format=json";
-
-    private static string FingerCondBody(string node, string employeeNo, int fingerPrintId)
+    private static string FingerReadCond(string employeeNo, int? fingerPrintId)
     {
+        var fp = fingerPrintId.HasValue ? $",\"fingerPrintID\":{fingerPrintId.Value}" : "";
         return
-            "{\"" + node + "\":{" +
+            "{\"FingerPrintCond\":{" +
             "\"searchID\":\"SIBHIK\"," +
             $"\"employeeNo\":\"{employeeNo}\"," +
             "\"enableCardReader\":[1]," +
-            "\"cardReaderNo\":1," +
-            $"\"fingerPrintID\":{fingerPrintId}," +
-            "\"fingerType\":\"normalFP\"" +
+            "\"cardReaderNo\":1" +
+            fp +
             "}}";
     }
 
@@ -151,34 +150,23 @@ public sealed class HikvisionBiometricClient : IDisposable
     /// <summary>Grava uma impressão digital num número de utilizador.</summary>
     public async Task<bool> UploadFingerprintAsync(string employeeNo, FingerTemplate fp, CancellationToken ct)
     {
-        var readers = string.Join(",", fp.EnableCardReader);
-        string Payload(string wrapper) =>
-            "{\"" + wrapper + "\":{" +
+        var readers = string.Join(",", fp.EnableCardReader.Count > 0 ? fp.EnableCardReader : new List<int> { 1 });
+
+        // Neste firmware a GRAVAÇÃO da digital é por FingerPrintDownload (o
+        // equipamento "recebe" os dados), com o nó FingerPrintCfg completo —
+        // incluindo o fingerType original (ex.: superFP) e o fingerData.
+        var body =
+            "{\"FingerPrintCfg\":{" +
             $"\"employeeNo\":\"{employeeNo}\"," +
             $"\"enableCardReader\":[{readers}]," +
             $"\"fingerPrintID\":{fp.FingerPrintId}," +
             $"\"fingerType\":\"{fp.FingerType}\"," +
+            "\"leaderFP\":[]," +
             $"\"fingerData\":\"{fp.FingerData}\"" +
             "}}";
 
-        // O endpoint/método/nó da gravação de digitais varia com o firmware.
-        // Tenta as combinações conhecidas até uma ser aceite (cada tentativa só
-        // corre se a anterior NÃO foi aceite, por isso não duplica).
-        var attempts = new (HttpMethod method, string path, string node)[]
-        {
-            (HttpMethod.Post, "/ISAPI/AccessControl/FingerPrint?format=json", "FingerPrint"),
-            (HttpMethod.Post, "/ISAPI/AccessControl/FingerPrint?format=json", "FingerPrintCfg"),
-            (HttpMethod.Put,  "/ISAPI/AccessControl/FingerPrintModify?format=json", "FingerPrintCfg"),
-            (HttpMethod.Put,  "/ISAPI/AccessControl/FingerPrintModify?format=json", "FingerPrint"),
-        };
-
-        foreach (var (method, path, node) in attempts)
-        {
-            var json = await SendAsync(method, path, Payload(node), ct);
-            if (json is not null && HikvisionUserWriteClient.ResponseIsOk(json))
-                return true;
-        }
-        return false;
+        var json = await PostAsync("/ISAPI/AccessControl/FingerPrintDownload?format=json", body, ct);
+        return json is not null && HikvisionUserWriteClient.ResponseIsOk(json);
     }
 
     // ------------------------------------------------------------------
