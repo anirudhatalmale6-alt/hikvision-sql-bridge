@@ -62,6 +62,7 @@ public sealed class HikvisionBiometricClient : IDisposable
                 "{\"" + node + "\":{" +
                 "\"searchID\":\"SIBHIK\"," +
                 $"\"employeeNo\":\"{employeeNo}\"," +
+                "\"enableCardReader\":[1]," +
                 "\"cardReaderNo\":1," +
                 "\"fingerPrintID\":0" +
                 "}}";
@@ -260,23 +261,39 @@ public sealed class HikvisionBiometricClient : IDisposable
     /// <summary>Grava uma imagem de face num número de utilizador (multipart).</summary>
     public async Task<bool> AddFaceAsync(string employeeNo, string fdid, byte[] jpeg, string? name, CancellationToken ct)
     {
-        var nameField = string.IsNullOrWhiteSpace(name)
-            ? ""
-            : $"\"name\":\"{System.Text.Json.JsonEncodedText.Encode(name)}\",";
+        // Metadados minimos e documentados (sem "name", que so' complica o parser
+        // do terminal). A face fica ligada ao utilizador pelo FPID.
         var meta =
             "{\"faceLibType\":\"blackFD\"," +
             $"\"FDID\":\"{fdid}\"," +
-            nameField +
             $"\"FPID\":\"{employeeNo}\"}}";
 
-        using var content = new MultipartFormDataContent();
-        var jsonPart = new StringContent(meta, Encoding.UTF8);
-        jsonPart.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        content.Add(jsonPart, "FaceDataRecord");
+        // IMPORTANTE: o terminal Hikvision e' exigente com o formato do multipart.
+        // O MultipartFormDataContent do .NET escreve os cabecalhos por uma ordem
+        // (Content-Type antes de Content-Disposition) que o parser do terminal nao
+        // aceita, e devolve "badJsonFormat". Por isso montamos o corpo a' mao, com
+        // o Content-Disposition primeiro e os nomes entre aspas, tal como o
+        // equipamento espera.
+        const string boundary = "----SIBHIKfaceBoundary8f2a1c";
+        const string nl = "\r\n";
+        var head = new StringBuilder();
+        head.Append("--").Append(boundary).Append(nl);
+        head.Append("Content-Disposition: form-data; name=\"FaceDataRecord\"").Append(nl);
+        head.Append("Content-Type: application/json").Append(nl).Append(nl);
+        head.Append(meta).Append(nl);
+        head.Append("--").Append(boundary).Append(nl);
+        head.Append("Content-Disposition: form-data; name=\"img\"; filename=\"").Append(employeeNo).Append(".jpg\"").Append(nl);
+        head.Append("Content-Type: image/jpeg").Append(nl).Append(nl);
 
-        var imgPart = new ByteArrayContent(jpeg);
-        imgPart.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
-        content.Add(imgPart, "img", $"{employeeNo}.jpg");
+        var preamble = Encoding.UTF8.GetBytes(head.ToString());
+        var epilogue = Encoding.UTF8.GetBytes(nl + "--" + boundary + "--" + nl);
+        var body = new byte[preamble.Length + jpeg.Length + epilogue.Length];
+        Buffer.BlockCopy(preamble, 0, body, 0, preamble.Length);
+        Buffer.BlockCopy(jpeg, 0, body, preamble.Length, jpeg.Length);
+        Buffer.BlockCopy(epilogue, 0, body, preamble.Length + jpeg.Length, epilogue.Length);
+
+        var content = new ByteArrayContent(body);
+        content.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + boundary);
 
         // O terminal (V4.38) rejeita PUT neste endpoint ("methodNotAllowed"):
         // a gravação da face é por POST.
