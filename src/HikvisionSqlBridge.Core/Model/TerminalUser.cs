@@ -25,6 +25,16 @@ public sealed class TerminalUser
     /// <summary>Tem PIN/código de teclado (=> identificador tipo 3).</summary>
     public bool HasPin { get; set; }
 
+    /// <summary>
+    /// Contadores de biometrias que o terminal declara para este utilizador
+    /// (numOfFP/numOfFace/numOfCard do UserInfo/Search). -1 = o firmware não os
+    /// forneceu. Usados como verdade para confirmar a migração antes de apagar o
+    /// número antigo.
+    /// </summary>
+    public int NumFingerprints { get; set; } = -1;
+    public int NumFaces { get; set; } = -1;
+    public int NumCards { get; set; } = -1;
+
     public override string ToString() =>
         $"employeeNo={EmployeeNo} nome=\"{Name}\" cartao={HasCard} digital/face={HasFingerprintOrFace}";
 }

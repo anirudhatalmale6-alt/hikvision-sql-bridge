@@ -46,6 +46,15 @@ if (args.Length > 0)
             // "todos" como 2º argumento -> também substitui os que já têm algo escrito.
             return await RunFillProfessionalNames(appConfig, args);
 
+        case "--renumerar":
+            // Limpeza pontual: tira os zeros à esquerda dos números no terminal
+            // (00137 -> 137) migrando as biometrias (digitais + cartões + face).
+            //   sem 2º arg   -> só mostra o plano (não altera nada).
+            //   plano        -> igual (simulação explícita).
+            //   <employeeNo> -> migra só esse número (ex.: 00137, para testar).
+            //   todos        -> migra todos os que têm zeros à esquerda.
+            return await RunRenumber(appConfig, args);
+
         case "--config":
             // Abre a janela de configuração gráfica (no browser, servidor local).
             return await ConfigWebApp.RunAsync(configPath);
@@ -202,6 +211,89 @@ static async Task<int> RunFillProfessionalNames(AppConfig cfg, string[] args)
     return 0;
 }
 
+static async Task<int> RunRenumber(AppConfig cfg, string[] args)
+{
+    var log = new ConsoleAppLogger();
+    if (cfg.Equipamentos.Count == 0)
+    {
+        Console.WriteLine("Nenhum terminal configurado na secção Equipamentos.");
+        return 2;
+    }
+
+    // Interpretar o 2º argumento.
+    string? onlyId = null;
+    bool apply;
+    var arg = args.Length >= 2 ? args[1].Trim() : "";
+    if (arg.Length == 0 || arg.Equals("plano", StringComparison.OrdinalIgnoreCase))
+    {
+        apply = false; // simulação / plano
+    }
+    else if (arg.Equals("todos", StringComparison.OrdinalIgnoreCase))
+    {
+        apply = true;  // migrar todos
+    }
+    else
+    {
+        apply = true;  // migrar só este número
+        onlyId = arg;
+    }
+
+    Console.WriteLine("SIBHIK — acerto de números com zeros à esquerda (00137 -> 137)");
+    Console.WriteLine(apply
+        ? (onlyId is null
+            ? "Modo: MIGRAR TODOS (copia biometrias para o número sem zeros e apaga o antigo)."
+            : $"Modo: MIGRAR SÓ o número {onlyId}.")
+        : "Modo: PLANO (só mostra o que vai acontecer — não altera nada).");
+    Console.WriteLine();
+
+    var svc = new HikvisionSqlBridge.Core.Hikvision.IdRenumberService(cfg, log);
+    int totalPadded = 0, totalDeleted = 0, totalKept = 0;
+
+    foreach (var device in cfg.Equipamentos)
+    {
+        Console.WriteLine($"== Terminal {device.DisplayName} ==");
+        List<HikvisionSqlBridge.Core.Hikvision.IdRenumberService.MigrationResult> results;
+        try
+        {
+            results = await svc.RenumberAsync(device, onlyId, apply, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  Não consegui falar com este terminal: {ex.Message}");
+            Console.WriteLine("  (Verifique o IP/porta/utilizador/palavra-passe em config.json e a ligação de rede.)");
+            Console.WriteLine();
+            continue;
+        }
+        if (results.Count == 0)
+        {
+            Console.WriteLine("  Nenhum número com zeros à esquerda encontrado.");
+            Console.WriteLine();
+            continue;
+        }
+
+        foreach (var r in results)
+        {
+            totalPadded++;
+            if (apply && r.OldDeleted) totalDeleted++;
+            else if (apply) totalKept++;
+            Console.WriteLine($"  {r.OldNo} -> {r.NewNo}: {r.Message}");
+        }
+        Console.WriteLine();
+    }
+
+    if (!apply)
+    {
+        Console.WriteLine($"Plano: {totalPadded} número(s) com zeros à esquerda.");
+        Console.WriteLine("Para migrar só um (teste): SIBHIK.exe --renumerar 00137");
+        Console.WriteLine("Para migrar todos:        SIBHIK.exe --renumerar todos");
+    }
+    else
+    {
+        Console.WriteLine($"Concluído. {totalDeleted} migrado(s) e antigo apagado; {totalKept} mantido(s) (ver avisos acima).");
+    }
+    return 0;
+}
+
 static VerifyMethod ParseMethod(string s) => s.ToLowerInvariant() switch
 {
     "card" or "rfid" => VerifyMethod.Card,
@@ -228,6 +320,8 @@ static void PrintHelp()
     Console.WriteLine("  --export-users               SQL -> terminais: cria nos terminais os utilizadores do SQL.");
     Console.WriteLine("  --sync-validity              Sincroniza a data de fim de validade (SQL <-> terminais).");
     Console.WriteLine("  --nomes-profissionais [todos] Preenche ID_NOME_PROFISSIONAL (1º+último nome) na TG_FUNCIONARIOS.");
+    Console.WriteLine("  --renumerar [id|todos]       Tira zeros à esquerda no terminal (00137 -> 137) migrando as biometrias.");
+    Console.WriteLine("                               Sem argumento mostra só o plano; <id> migra um; 'todos' migra todos.");
     Console.WriteLine("  --config                     Abre a janela de configuração (no browser).");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
 }

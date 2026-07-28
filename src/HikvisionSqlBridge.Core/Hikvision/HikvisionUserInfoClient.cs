@@ -146,6 +146,12 @@ public sealed class HikvisionUserInfoClient : IDisposable
         // o método mais comum nestes terminais — afinado com o equipamento real.
         user.HasFingerprintOrFace = hasAnyCount ? (fps > 0 || faces > 0) : true;
 
+        // Contadores numéricos (verdade para a verificação da migração). -1 = o
+        // firmware não os forneceu.
+        user.NumFingerprints = (item.TryGetProperty("numOfFP", out _) || item.TryGetProperty("numOfFinger", out _)) ? fps : -1;
+        user.NumFaces = item.TryGetProperty("numOfFace", out _) ? faces : -1;
+        user.NumCards = item.TryGetProperty("numOfCard", out _) ? cards : -1;
+
         return user;
     }
 
