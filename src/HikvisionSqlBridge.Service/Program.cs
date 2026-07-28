@@ -242,7 +242,7 @@ static async Task<int> RunRenumber(AppConfig cfg, string[] args)
         onlyId = arg;
     }
 
-    Console.WriteLine("SIBHIK v0.4.7 — acerto de números com zeros à esquerda (00137 -> 137)");
+    Console.WriteLine("SIBHIK v0.4.8 — acerto de números com zeros à esquerda (00137 -> 137)");
     Console.WriteLine(apply
         ? (onlyId is null
             ? "Modo: MIGRAR TODOS (copia biometrias para o número sem zeros e apaga o antigo)."

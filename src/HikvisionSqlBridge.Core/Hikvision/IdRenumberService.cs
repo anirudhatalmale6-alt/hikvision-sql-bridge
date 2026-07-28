@@ -155,6 +155,8 @@ public sealed class IdRenumberService
         {
             if (newFpIds.Contains(fp.FingerPrintId)) continue;
             if (await bio.UploadFingerprintAsync(p.NewNo, fp, ct)) fpMoved++;
+            // Dar tempo ao terminal entre digitais (ele fica "ocupado" a gravar).
+            await Task.Delay(800, ct);
         }
 
         // 3) Cartões — só os que faltam.

@@ -165,8 +165,38 @@ public sealed class HikvisionBiometricClient : IDisposable
             $"\"fingerData\":\"{fp.FingerData}\"" +
             "}}";
 
-        var json = await PostAsync("/ISAPI/AccessControl/FingerPrintDownload?format=json", body, ct);
-        return json is not null && HikvisionUserWriteClient.ResponseIsOk(json);
+        // O terminal fica "ocupado" (deviceBusy) logo a seguir a gravar uma digital,
+        // por isso, se der ocupado, esperamos um pouco e tentamos de novo.
+        for (int attempt = 1; attempt <= 5; attempt++)
+        {
+            var json = await PostAsync("/ISAPI/AccessControl/FingerPrintDownload?format=json", body, ct);
+            if (json is not null && HikvisionUserWriteClient.ResponseIsOk(json))
+                return true;
+            if (json is not null && IsDeviceBusy(json) && attempt < 5)
+            {
+                await Task.Delay(1500, ct);
+                continue;
+            }
+            return false;
+        }
+        return false;
+    }
+
+    private static bool IsDeviceBusy(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            if (r.TryGetProperty("subStatusCode", out var s) &&
+                string.Equals(s.GetString(), "deviceBusy", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (r.TryGetProperty("statusString", out var ss) &&
+                (ss.GetString()?.Contains("Busy", StringComparison.OrdinalIgnoreCase) ?? false))
+                return true;
+        }
+        catch { /* resposta não-JSON */ }
+        return false;
     }
 
     // ------------------------------------------------------------------
