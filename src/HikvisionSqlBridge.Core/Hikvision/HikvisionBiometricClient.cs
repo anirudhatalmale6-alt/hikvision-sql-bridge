@@ -153,10 +153,10 @@ public sealed class HikvisionBiometricClient : IDisposable
         var readers = string.Join(",", fp.EnableCardReader.Count > 0 ? fp.EnableCardReader : new List<int> { 1 });
 
         // A GRAVAÇÃO envia o registo completo (FingerPrintCfg) com o fingerType
-        // original (ex.: superFP) e o fingerData. Neste firmware quem grava é o
-        // FingerPrintUpload (o cliente "sobe" a digital para o terminal); o
-        // FingerPrintDownload aceita mas NÃO grava (responde OK sem guardar), por
-        // isso fica só como alternativa.
+        // original (ex.: superFP) e o fingerData. Vários endpoints respondem "OK"
+        // sem guardar mesmo, por isso NÃO confiamos na resposta: depois de cada
+        // tentativa, RELEMOS a digital do utilizador e só damos por boa se ela
+        // ficou lá. Assim o próprio programa descobre qual é o caminho que grava.
         var body =
             "{\"FingerPrintCfg\":{" +
             $"\"employeeNo\":\"{employeeNo}\"," +
@@ -167,30 +167,42 @@ public sealed class HikvisionBiometricClient : IDisposable
             $"\"fingerData\":\"{fp.FingerData}\"" +
             "}}";
 
-        string[] paths =
+        var candidates = new (HttpMethod method, string path)[]
         {
-            "/ISAPI/AccessControl/FingerPrintUpload?format=json",
-            "/ISAPI/AccessControl/FingerPrintDownload?format=json",
+            (HttpMethod.Put,  "/ISAPI/AccessControl/FingerPrintCfg?format=json"),
+            (HttpMethod.Post, "/ISAPI/AccessControl/FingerPrintCfg?format=json"),
+            (HttpMethod.Put,  "/ISAPI/AccessControl/FingerPrintDownload?format=json"),
+            (HttpMethod.Post, "/ISAPI/AccessControl/FingerPrintDownload?format=json"),
         };
 
-        foreach (var path in paths)
+        foreach (var (method, path) in candidates)
         {
-            // O terminal fica "ocupado" (deviceBusy) logo a seguir a gravar uma
-            // digital; se der ocupado, esperamos um pouco e tentamos de novo.
             for (int attempt = 1; attempt <= 5; attempt++)
             {
-                var json = await PostAsync(path, body, ct);
-                if (json is not null && HikvisionUserWriteClient.ResponseIsOk(json))
-                    return true;
+                var json = await SendAsync(method, path, body, ct);
                 if (json is not null && IsDeviceBusy(json) && attempt < 5)
                 {
                     await Task.Delay(1500, ct);
                     continue;
                 }
-                break; // erro que não é "ocupado" -> tenta o próximo caminho
+                break;
             }
+
+            // Confirmar por releitura (a resposta "OK" não é de confiança).
+            await Task.Delay(600, ct);
+            if (await FingerprintExistsAsync(employeeNo, fp.FingerPrintId, ct))
+                return true;
         }
         return false;
+    }
+
+    /// <summary>Confirma, por leitura, se uma digital ficou mesmo gravada no utilizador.</summary>
+    private async Task<bool> FingerprintExistsAsync(string employeeNo, int fingerPrintId, CancellationToken ct)
+    {
+        var json = await PostAsync("/ISAPI/AccessControl/FingerPrintUpload?format=json",
+            FingerReadCond(employeeNo, fingerPrintId), ct);
+        if (json is null) return false;
+        return ParseFingerprints(json, employeeNo).Any(f => f.FingerPrintId == fingerPrintId);
     }
 
     private static bool IsDeviceBusy(string json)
