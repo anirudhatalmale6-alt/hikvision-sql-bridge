@@ -53,18 +53,32 @@ public sealed class HikvisionBiometricClient : IDisposable
     /// <summary>Lê as impressões digitais gravadas num número de utilizador.</summary>
     public async Task<List<FingerTemplate>> DownloadFingerprintsAsync(string employeeNo, CancellationToken ct)
     {
-        var body =
-            "{\"FingerPrintCond\":{" +
-            "\"searchID\":\"SIBHIK\"," +
-            $"\"employeeNo\":\"{employeeNo}\"," +
-            "\"cardReaderNo\":1," +
-            "\"fingerPrintID\":0" +
-            "}}";
+        // O nó do pedido varia com o firmware: uns querem "FingerPrintCond",
+        // outros "FingerPrintCfg" (o V4.38 do DS-K1T342 pede este último). Tenta
+        // os dois e fica com o que devolver digitais.
+        foreach (var node in new[] { "FingerPrintCfg", "FingerPrintCond" })
+        {
+            var body =
+                "{\"" + node + "\":{" +
+                "\"searchID\":\"SIBHIK\"," +
+                $"\"employeeNo\":\"{employeeNo}\"," +
+                "\"cardReaderNo\":1," +
+                "\"fingerPrintID\":0" +
+                "}}";
 
-        var json = await PostAsync("/ISAPI/AccessControl/FingerPrintDownload?format=json", body, ct);
+            var json = await PostAsync("/ISAPI/AccessControl/FingerPrintDownload?format=json", body, ct);
+            if (json is null) continue;
+
+            var list = ParseFingerprints(json, employeeNo);
+            if (list.Count > 0)
+                return list;
+        }
+        return new List<FingerTemplate>();
+    }
+
+    private List<FingerTemplate> ParseFingerprints(string json, string employeeNo)
+    {
         var list = new List<FingerTemplate>();
-        if (json is null) return list;
-
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -98,13 +112,24 @@ public sealed class HikvisionBiometricClient : IDisposable
             $"\"fingerData\":\"{fp.FingerData}\"" +
             "}}";
 
-        // Wrapper primário; se o firmware não aceitar, tenta a variante.
-        var json = await PostAsync("/ISAPI/AccessControl/FingerPrint?format=json", Payload("FingerPrint"), ct);
-        if (json is not null && HikvisionUserWriteClient.ResponseIsOk(json))
-            return true;
+        // O endpoint/método/nó da gravação de digitais varia com o firmware.
+        // Tenta as combinações conhecidas até uma ser aceite (cada tentativa só
+        // corre se a anterior NÃO foi aceite, por isso não duplica).
+        var attempts = new (HttpMethod method, string path, string node)[]
+        {
+            (HttpMethod.Post, "/ISAPI/AccessControl/FingerPrint?format=json", "FingerPrint"),
+            (HttpMethod.Post, "/ISAPI/AccessControl/FingerPrint?format=json", "FingerPrintCfg"),
+            (HttpMethod.Put,  "/ISAPI/AccessControl/FingerPrintModify?format=json", "FingerPrintCfg"),
+            (HttpMethod.Put,  "/ISAPI/AccessControl/FingerPrintModify?format=json", "FingerPrint"),
+        };
 
-        var alt = await PutAsync("/ISAPI/AccessControl/FingerPrintCfg?format=json", Payload("FingerPrintCfg"), ct);
-        return alt is not null && HikvisionUserWriteClient.ResponseIsOk(alt);
+        foreach (var (method, path, node) in attempts)
+        {
+            var json = await SendAsync(method, path, Payload(node), ct);
+            if (json is not null && HikvisionUserWriteClient.ResponseIsOk(json))
+                return true;
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------
@@ -233,11 +258,15 @@ public sealed class HikvisionBiometricClient : IDisposable
     }
 
     /// <summary>Grava uma imagem de face num número de utilizador (multipart).</summary>
-    public async Task<bool> AddFaceAsync(string employeeNo, string fdid, byte[] jpeg, CancellationToken ct)
+    public async Task<bool> AddFaceAsync(string employeeNo, string fdid, byte[] jpeg, string? name, CancellationToken ct)
     {
+        var nameField = string.IsNullOrWhiteSpace(name)
+            ? ""
+            : $"\"name\":\"{System.Text.Json.JsonEncodedText.Encode(name)}\",";
         var meta =
             "{\"faceLibType\":\"blackFD\"," +
             $"\"FDID\":\"{fdid}\"," +
+            nameField +
             $"\"FPID\":\"{employeeNo}\"}}";
 
         using var content = new MultipartFormDataContent();
@@ -249,10 +278,12 @@ public sealed class HikvisionBiometricClient : IDisposable
         imgPart.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
         content.Add(imgPart, "img", $"{employeeNo}.jpg");
 
+        // O terminal (V4.38) rejeita PUT neste endpoint ("methodNotAllowed"):
+        // a gravação da face é por POST.
         var url = _device.BaseUrl + "/ISAPI/Intelligent/FDLib/FaceDataRecord?format=json";
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Put, url) { Content = content };
+            using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
             using var resp = await _http.SendAsync(req, ct);
             var json = await resp.Content.ReadAsStringAsync(ct);
             _log.Info($"{_device.DisplayName}: FaceDataRecord FPID={employeeNo} (HTTP {(int)resp.StatusCode}) -> {Trunc(json)}");

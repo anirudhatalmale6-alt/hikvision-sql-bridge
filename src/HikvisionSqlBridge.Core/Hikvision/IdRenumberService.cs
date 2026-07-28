@@ -170,7 +170,7 @@ public sealed class IdRenumberService
         {
             var jpeg = await bio.DownloadFaceAsync(p.OldNo, fdid, ct);
             if (jpeg is not null)
-                faceMoved = await bio.AddFaceAsync(p.NewNo, fdid, jpeg, ct);
+                faceMoved = await bio.AddFaceAsync(p.NewNo, fdid, jpeg, source.Name, ct);
             if (!faceMoved) faceProblem = true;
         }
 
