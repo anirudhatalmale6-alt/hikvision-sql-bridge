@@ -26,11 +26,11 @@ public sealed class IdRenumberService
     }
 
     /// <summary>Uma renumeração planeada para um utilizador (00137 -> 137).</summary>
-    public sealed record PlanItem(string OldNo, string NewNo, bool TargetExists, string Name);
+    public sealed record PlanItem(string OldNo, string NewNo, bool TargetExists, string Name, int Fingerprints);
 
     /// <summary>Resultado da migração de um utilizador.</summary>
     public sealed record MigrationResult(
-        string OldNo, string NewNo, int FingerprintsMoved, int CardsMoved,
+        string OldNo, string NewNo, int FingerprintsPending, int CardsMoved,
         bool FaceMoved, bool Verified, bool OldDeleted, string Message);
 
     /// <summary>
@@ -56,7 +56,7 @@ public sealed class IdRenumberService
                 !target.Equals(IdRenumber.StripLeadingZeros(onlyId), StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            plan.Add(new PlanItem(old, target, existing.Contains(target), u.Name));
+            plan.Add(new PlanItem(old, target, existing.Contains(target), u.Name, Math.Max(0, u.NumFingerprints)));
         }
 
         return plan;
@@ -92,8 +92,10 @@ public sealed class IdRenumberService
         if (!apply)
         {
             foreach (var p in plan)
-                results.Add(new MigrationResult(p.OldNo, p.NewNo, 0, 0, false, false, false,
-                    $"(simulacao) {p.OldNo} -> {p.NewNo}" + (p.TargetExists ? " [destino ja' existe]" : " [cria destino]")));
+                results.Add(new MigrationResult(p.OldNo, p.NewNo, p.Fingerprints, 0, false, false, false,
+                    $"(simulacao) {p.OldNo} -> {p.NewNo}" +
+                    (p.TargetExists ? " [destino ja' existe]" : " [cria destino]") +
+                    (p.Fingerprints > 0 ? $" [tem {p.Fingerprints} digital(is) -> re-scan]" : "")));
             return results;
         }
 
@@ -140,26 +142,13 @@ public sealed class IdRenumberService
                     "nao consegui criar o numero novo — antigo mantido, nada perdido.");
         }
 
-        // Estado de origem. Se o terminal já diz que este utilizador não tem
-        // digitais (numOfFP=0), poupamos as 10..20 consultas por dedo.
-        var oldFps = source.NumFingerprints == 0
-            ? new List<HikvisionBiometricClient.FingerTemplate>()
-            : await bio.DownloadFingerprintsAsync(p.OldNo, ct);
+        // A DIGITAL não se migra: este firmware não deixa importar digitais por
+        // software (responde "notSupport"). Guardamos só quantas tinha, para
+        // avisar que precisam de um re-scan rápido no número novo.
+        int fpParaRescan = Math.Max(0, source.NumFingerprints);
+
+        // 2) Cartões — só os que faltam (idempotente).
         var oldCards = await bio.GetCardsAsync(p.OldNo, ct);
-        var oldFaces = await bio.CountFacesAsync(p.OldNo, fdid, ct);
-
-        // 2) Digitais — só as que ainda faltam no destino (idempotente).
-        var newFpIds = new HashSet<int>((await bio.DownloadFingerprintsAsync(p.NewNo, ct)).Select(f => f.FingerPrintId));
-        int fpMoved = 0;
-        foreach (var fp in oldFps)
-        {
-            if (newFpIds.Contains(fp.FingerPrintId)) continue;
-            if (await bio.UploadFingerprintAsync(p.NewNo, fp, ct)) fpMoved++;
-            // Dar tempo ao terminal entre digitais (ele fica "ocupado" a gravar).
-            await Task.Delay(800, ct);
-        }
-
-        // 3) Cartões — só os que faltam.
         var newCardNos = new HashSet<string>((await bio.GetCardsAsync(p.NewNo, ct)).Select(c => c.CardNo), StringComparer.OrdinalIgnoreCase);
         int cardsMoved = 0;
         foreach (var c in oldCards)
@@ -168,7 +157,8 @@ public sealed class IdRenumberService
             if (await bio.AddCardAsync(p.NewNo, c, ct)) cardsMoved++;
         }
 
-        // 4) Face — se o antigo tem e o novo ainda nao.
+        // 3) Face — se o antigo tem e o novo ainda não.
+        var oldFaces = await bio.CountFacesAsync(p.OldNo, fdid, ct);
         bool faceMoved = false;
         bool faceProblem = false;
         if (oldFaces > 0 && await bio.CountFacesAsync(p.NewNo, fdid, ct) == 0)
@@ -179,36 +169,31 @@ public sealed class IdRenumberService
             if (!faceMoved) faceProblem = true;
         }
 
-        // 5) VERIFICAR o destino antes de apagar o antigo. O que TEM de estar no
-        // destino é o que conseguimos LER da origem. Para cartões e face usamos
-        // também o contador que o terminal declara (mais seguro). Para as digitais
-        // usamos o que lemos mesmo (o contador da lista às vezes conta a mais),
-        // mas com uma salvaguarda: se o terminal diz que há digitais e nós não
-        // conseguimos ler nenhuma, é sinal de falha de leitura -> NÃO apaga.
-        int expFps = oldFps.Count;
+        // 4) VERIFICAR a face e o cartão no destino ANTES de apagar o antigo. Se a
+        // face/cartão da origem não ficaram no destino, NÃO apaga — nada se perde.
         int expCards = Math.Max(source.NumCards, oldCards.Count);
         int expFaces = Math.Max(source.NumFaces, oldFaces);
-        bool fpReadSuspeita = source.NumFingerprints > 0 && oldFps.Count == 0;
 
-        var verFps = (await bio.DownloadFingerprintsAsync(p.NewNo, ct)).Count;
         var verCards = (await bio.GetCardsAsync(p.NewNo, ct)).Count;
         var verFaces = await bio.CountFacesAsync(p.NewNo, fdid, ct);
 
-        bool ok = !fpReadSuspeita && verFps >= expFps && verCards >= expCards && verFaces >= expFaces;
+        bool ok = verCards >= expCards && verFaces >= expFaces;
 
         if (!ok)
         {
-            return new MigrationResult(p.OldNo, p.NewNo, fpMoved, cardsMoved, faceMoved, false, false,
-                $"verificacao falhou (destino tem {verFps} digitais / {verCards} cartoes / {verFaces} face; " +
-                $"a origem precisava de {expFps}/{expCards}/{expFaces}). Antigo MANTIDO — nada perdido." +
-                (fpReadSuspeita ? $" (o terminal diz que o {p.OldNo} tem {source.NumFingerprints} digital(is) mas nao consegui le-las)" : "") +
+            return new MigrationResult(p.OldNo, p.NewNo, fpParaRescan, cardsMoved, faceMoved, false, false,
+                $"verificacao falhou (destino tem {verCards} cartoes / {verFaces} face; " +
+                $"a origem precisava de {expCards}/{expFaces}). Antigo MANTIDO — nada perdido." +
                 (faceProblem ? " A face nao passou." : ""));
         }
 
-        // 6) Só agora apaga o antigo.
+        // 5) Só agora apaga o antigo.
         var deleted = await bio.DeleteUserAsync(p.OldNo, ct);
-        return new MigrationResult(p.OldNo, p.NewNo, fpMoved, cardsMoved, verFaces > 0, true, deleted,
-            $"OK: {verFps} digital(is), {verCards} cartao(oes), {verFaces} face no {p.NewNo}. " +
-            (deleted ? $"Antigo {p.OldNo} apagado." : $"ATENCAO: nao consegui apagar o antigo {p.OldNo} (biometrias ja' estao no {p.NewNo})."));
+        var msg =
+            $"OK: {verFaces} face, {verCards} cartao(oes) no {p.NewNo}. " +
+            (deleted ? $"Antigo {p.OldNo} apagado." : $"ATENCAO: nao consegui apagar o antigo {p.OldNo}.");
+        if (fpParaRescan > 0)
+            msg += $" DIGITAL: {p.NewNo} precisa de re-scan de {fpParaRescan} dedo(s) (o terminal nao deixa copiar digitais).";
+        return new MigrationResult(p.OldNo, p.NewNo, fpParaRescan, cardsMoved, verFaces > 0, true, deleted, msg);
     }
 }

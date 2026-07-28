@@ -242,16 +242,19 @@ static async Task<int> RunRenumber(AppConfig cfg, string[] args)
         onlyId = arg;
     }
 
-    Console.WriteLine("SIBHIK v0.4.10 — acerto de números com zeros à esquerda (00137 -> 137)");
+    Console.WriteLine("SIBHIK v0.4.11 — acerto de números com zeros à esquerda (00137 -> 137)");
     Console.WriteLine(apply
         ? (onlyId is null
-            ? "Modo: MIGRAR TODOS (copia biometrias para o número sem zeros e apaga o antigo)."
+            ? "Modo: MIGRAR TODOS (copia FACE + CARTÃO para o número sem zeros e apaga o antigo)."
             : $"Modo: MIGRAR SÓ o número {onlyId}.")
         : "Modo: PLANO (só mostra o que vai acontecer — não altera nada).");
+    Console.WriteLine("Nota: a impressão digital não se copia (o terminal não deixa); quem usa dedo");
+    Console.WriteLine("      faz um re-scan rápido no número novo. A FACE e o CARTÃO migram sozinhos.");
     Console.WriteLine();
 
     var svc = new HikvisionSqlBridge.Core.Hikvision.IdRenumberService(cfg, log);
     int totalPadded = 0, totalDeleted = 0, totalKept = 0;
+    var precisamRescan = new List<string>();
 
     foreach (var device in cfg.Equipamentos)
     {
@@ -280,6 +283,8 @@ static async Task<int> RunRenumber(AppConfig cfg, string[] args)
             totalPadded++;
             if (apply && r.OldDeleted) totalDeleted++;
             else if (apply) totalKept++;
+            if (r.FingerprintsPending > 0)
+                precisamRescan.Add($"{r.NewNo} ({r.FingerprintsPending} dedo(s))");
             Console.WriteLine($"  {r.OldNo} -> {r.NewNo}: {r.Message}");
         }
         Console.WriteLine();
@@ -288,12 +293,20 @@ static async Task<int> RunRenumber(AppConfig cfg, string[] args)
     if (!apply)
     {
         Console.WriteLine($"Plano: {totalPadded} número(s) com zeros à esquerda.");
+        if (precisamRescan.Count > 0)
+            Console.WriteLine($"Destes, {precisamRescan.Count} usam digital e vão precisar de re-scan: {string.Join(", ", precisamRescan)}");
         Console.WriteLine("Para migrar só um (teste): SIBHIK.exe --renumerar 00137");
         Console.WriteLine("Para migrar todos:        SIBHIK.exe --renumerar todos");
     }
     else
     {
-        Console.WriteLine($"Concluído. {totalDeleted} migrado(s) e antigo apagado; {totalKept} mantido(s) (ver avisos acima).");
+        Console.WriteLine($"Concluído. {totalDeleted} migrado(s) (FACE + CARTÃO) e antigo apagado; {totalKept} mantido(s) (ver avisos acima).");
+        if (precisamRescan.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"RE-SCAN DA DIGITAL — estes {precisamRescan.Count} número(s) tinham digital e precisam de a re-inscrever no terminal:");
+            Console.WriteLine("  " + string.Join(", ", precisamRescan));
+        }
     }
     return 0;
 }
