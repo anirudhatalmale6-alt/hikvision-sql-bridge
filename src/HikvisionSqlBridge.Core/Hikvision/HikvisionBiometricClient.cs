@@ -53,19 +53,13 @@ public sealed class HikvisionBiometricClient : IDisposable
     /// <summary>Lê as impressões digitais gravadas num número de utilizador.</summary>
     public async Task<List<FingerTemplate>> DownloadFingerprintsAsync(string employeeNo, CancellationToken ct)
     {
-        // O nó do pedido varia com o firmware: uns querem "FingerPrintCond",
-        // outros "FingerPrintCfg" (o V4.38 do DS-K1T342 pede este último). E o
-        // fingerPrintID=0 ("todos") é recusado por este firmware. Por isso, para
-        // cada nó, tenta primeiro SEM fingerPrintID (todas de uma vez) e, se isso
-        // não devolver nada, vai dedo a dedo (1..10).
+        // Este firmware (V4.38) exige o registo completo no pedido: employeeNo,
+        // enableCardReader, fingerPrintID E fingerType. Não é uma "lista" — é uma
+        // consulta por dedo. Por isso vamos dedo a dedo (1..10) e recolhemos os que
+        // tiverem digital gravada. O nó pode ser "FingerPrintCfg" (este modelo) ou
+        // "FingerPrintCond" (outros firmwares).
         foreach (var node in new[] { "FingerPrintCfg", "FingerPrintCond" })
         {
-            var all = ParseFingerprints(
-                await PostAsync(FingerPrintDownloadPath, FingerCondBody(node, employeeNo, null), ct) ?? "",
-                employeeNo);
-            if (all.Count > 0)
-                return all;
-
             var collected = new List<FingerTemplate>();
             var seen = new HashSet<int>();
             for (int fid = 1; fid <= 10; fid++)
@@ -85,16 +79,16 @@ public sealed class HikvisionBiometricClient : IDisposable
 
     private const string FingerPrintDownloadPath = "/ISAPI/AccessControl/FingerPrintDownload?format=json";
 
-    private static string FingerCondBody(string node, string employeeNo, int? fingerPrintId)
+    private static string FingerCondBody(string node, string employeeNo, int fingerPrintId)
     {
-        var fp = fingerPrintId.HasValue ? $",\"fingerPrintID\":{fingerPrintId.Value}" : "";
         return
             "{\"" + node + "\":{" +
             "\"searchID\":\"SIBHIK\"," +
             $"\"employeeNo\":\"{employeeNo}\"," +
             "\"enableCardReader\":[1]," +
-            "\"cardReaderNo\":1" +
-            fp +
+            "\"cardReaderNo\":1," +
+            $"\"fingerPrintID\":{fingerPrintId}," +
+            "\"fingerType\":\"normalFP\"" +
             "}}";
     }
 

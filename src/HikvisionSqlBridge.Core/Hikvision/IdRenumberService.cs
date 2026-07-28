@@ -140,8 +140,11 @@ public sealed class IdRenumberService
                     "nao consegui criar o numero novo — antigo mantido, nada perdido.");
         }
 
-        // Estado de origem.
-        var oldFps = await bio.DownloadFingerprintsAsync(p.OldNo, ct);
+        // Estado de origem. Se o terminal já diz que este utilizador não tem
+        // digitais (numOfFP=0), poupamos as 10..20 consultas por dedo.
+        var oldFps = source.NumFingerprints == 0
+            ? new List<HikvisionBiometricClient.FingerTemplate>()
+            : await bio.DownloadFingerprintsAsync(p.OldNo, ct);
         var oldCards = await bio.GetCardsAsync(p.OldNo, ct);
         var oldFaces = await bio.CountFacesAsync(p.OldNo, fdid, ct);
 
