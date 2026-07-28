@@ -152,9 +152,11 @@ public sealed class HikvisionBiometricClient : IDisposable
     {
         var readers = string.Join(",", fp.EnableCardReader.Count > 0 ? fp.EnableCardReader : new List<int> { 1 });
 
-        // Neste firmware a GRAVAÇÃO da digital é por FingerPrintDownload (o
-        // equipamento "recebe" os dados), com o nó FingerPrintCfg completo —
-        // incluindo o fingerType original (ex.: superFP) e o fingerData.
+        // A GRAVAÇÃO envia o registo completo (FingerPrintCfg) com o fingerType
+        // original (ex.: superFP) e o fingerData. Neste firmware quem grava é o
+        // FingerPrintUpload (o cliente "sobe" a digital para o terminal); o
+        // FingerPrintDownload aceita mas NÃO grava (responde OK sem guardar), por
+        // isso fica só como alternativa.
         var body =
             "{\"FingerPrintCfg\":{" +
             $"\"employeeNo\":\"{employeeNo}\"," +
@@ -165,19 +167,28 @@ public sealed class HikvisionBiometricClient : IDisposable
             $"\"fingerData\":\"{fp.FingerData}\"" +
             "}}";
 
-        // O terminal fica "ocupado" (deviceBusy) logo a seguir a gravar uma digital,
-        // por isso, se der ocupado, esperamos um pouco e tentamos de novo.
-        for (int attempt = 1; attempt <= 5; attempt++)
+        string[] paths =
         {
-            var json = await PostAsync("/ISAPI/AccessControl/FingerPrintDownload?format=json", body, ct);
-            if (json is not null && HikvisionUserWriteClient.ResponseIsOk(json))
-                return true;
-            if (json is not null && IsDeviceBusy(json) && attempt < 5)
+            "/ISAPI/AccessControl/FingerPrintUpload?format=json",
+            "/ISAPI/AccessControl/FingerPrintDownload?format=json",
+        };
+
+        foreach (var path in paths)
+        {
+            // O terminal fica "ocupado" (deviceBusy) logo a seguir a gravar uma
+            // digital; se der ocupado, esperamos um pouco e tentamos de novo.
+            for (int attempt = 1; attempt <= 5; attempt++)
             {
-                await Task.Delay(1500, ct);
-                continue;
+                var json = await PostAsync(path, body, ct);
+                if (json is not null && HikvisionUserWriteClient.ResponseIsOk(json))
+                    return true;
+                if (json is not null && IsDeviceBusy(json) && attempt < 5)
+                {
+                    await Task.Delay(1500, ct);
+                    continue;
+                }
+                break; // erro que não é "ocupado" -> tenta o próximo caminho
             }
-            return false;
         }
         return false;
     }
