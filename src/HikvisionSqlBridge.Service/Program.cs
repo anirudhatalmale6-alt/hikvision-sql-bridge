@@ -55,6 +55,10 @@ if (args.Length > 0)
             //   todos        -> migra todos os que têm zeros à esquerda.
             return await RunRenumber(appConfig, args);
 
+        case "--diag-fp":
+            // Diagnóstico: descobre como este terminal deixa LER as digitais.
+            return await RunDiagFingerprint(appConfig, args);
+
         case "--config":
             // Abre a janela de configuração gráfica (no browser, servidor local).
             return await ConfigWebApp.RunAsync(configPath);
@@ -238,7 +242,7 @@ static async Task<int> RunRenumber(AppConfig cfg, string[] args)
         onlyId = arg;
     }
 
-    Console.WriteLine("SIBHIK v0.4.5 — acerto de números com zeros à esquerda (00137 -> 137)");
+    Console.WriteLine("SIBHIK v0.4.6 — acerto de números com zeros à esquerda (00137 -> 137)");
     Console.WriteLine(apply
         ? (onlyId is null
             ? "Modo: MIGRAR TODOS (copia biometrias para o número sem zeros e apaga o antigo)."
@@ -290,6 +294,37 @@ static async Task<int> RunRenumber(AppConfig cfg, string[] args)
     else
     {
         Console.WriteLine($"Concluído. {totalDeleted} migrado(s) e antigo apagado; {totalKept} mantido(s) (ver avisos acima).");
+    }
+    return 0;
+}
+
+static async Task<int> RunDiagFingerprint(AppConfig cfg, string[] args)
+{
+    var log = new ConsoleAppLogger();
+    if (cfg.Equipamentos.Count == 0)
+    {
+        Console.WriteLine("Nenhum terminal configurado na secção Equipamentos.");
+        return 2;
+    }
+    var employeeNo = args.Length >= 2 ? args[1].Trim() : "00137";
+
+    Console.WriteLine("SIBHIK v0.4.6 — diagnóstico das impressões digitais");
+    Console.WriteLine($"A perguntar ao terminal como se leem as digitais do {employeeNo}...");
+    Console.WriteLine();
+
+    foreach (var device in cfg.Equipamentos)
+    {
+        Console.WriteLine($"== Terminal {device.DisplayName} ==");
+        using var bio = new HikvisionSqlBridge.Core.Hikvision.HikvisionBiometricClient(device, log);
+        try
+        {
+            await bio.DiagnoseFingerprintAsync(employeeNo, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  Falha a falar com o terminal: {ex.Message}");
+        }
+        Console.WriteLine();
     }
     return 0;
 }

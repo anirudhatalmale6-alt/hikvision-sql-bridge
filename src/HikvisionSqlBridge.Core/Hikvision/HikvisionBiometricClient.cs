@@ -115,6 +115,39 @@ public sealed class HikvisionBiometricClient : IDisposable
         return list;
     }
 
+    /// <summary>
+    /// Diagnóstico: pergunta ao terminal como e' que ele deixa LER as impressões
+    /// digitais (capabilities dos vários endpoints) e tenta a leitura por dois
+    /// caminhos. Regista as respostas completas para percebermos, sem adivinhar,
+    /// qual e' o formato certo neste firmware — ou se ele simplesmente nao deixa
+    /// exportar digitais (comum nos firmwares recentes, por privacidade).
+    /// </summary>
+    public async Task DiagnoseFingerprintAsync(string employeeNo, CancellationToken ct)
+    {
+        string[] capUrls =
+        {
+            "/ISAPI/AccessControl/FingerPrintDownload/capabilities?format=json",
+            "/ISAPI/AccessControl/FingerPrintUpload/capabilities?format=json",
+            "/ISAPI/AccessControl/CaptureFingerPrint/capabilities?format=json",
+            "/ISAPI/AccessControl/FingerPrintCfg/capabilities?format=json",
+        };
+        foreach (var url in capUrls)
+        {
+            var json = await GetAsync(url, ct);
+            _log.Info($"=== GET {url} ===");
+            _log.Info(json ?? "(sem resposta / endpoint nao suportado)");
+        }
+
+        // Tentativa de LEITURA por FingerPrintUpload (nalguns firmwares e' este que
+        // devolve a digital gravada, ao contrario do "Download").
+        var readBody =
+            "{\"FingerPrintCond\":{\"searchID\":\"SIBHIK\"," +
+            $"\"employeeNo\":\"{employeeNo}\",\"enableCardReader\":[1],\"cardReaderNo\":1}}}}";
+        var up = await PostAsync("/ISAPI/AccessControl/FingerPrintUpload?format=json", readBody, ct);
+        _log.Info("=== POST FingerPrintUpload (tentativa de leitura) ===");
+        _log.Info(up ?? "(sem resposta)");
+    }
+
     /// <summary>Grava uma impressão digital num número de utilizador.</summary>
     public async Task<bool> UploadFingerprintAsync(string employeeNo, FingerTemplate fp, CancellationToken ct)
     {
