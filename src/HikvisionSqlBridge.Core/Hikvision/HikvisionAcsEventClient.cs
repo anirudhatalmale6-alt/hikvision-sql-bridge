@@ -62,10 +62,19 @@ public sealed class HikvisionAcsEventClient : IDisposable
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
             };
             using var resp = await _http.SendAsync(req, ct);
-            resp.EnsureSuccessStatusCode();
-
             var json = await resp.Content.ReadAsStringAsync(ct);
             _log.Raw(_device.DisplayName, json);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                // Guardamos o pedido e a resposta do terminal: o "400" sozinho não
+                // diz porquê, o texto do terminal diz (ex.: hora fora do intervalo).
+                _log.Raw(_device.DisplayName, "PEDIDO: " + body);
+                throw new HttpRequestException(
+                    $"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase} ({Shorten(json)}) " +
+                    $"janela {start:yyyy-MM-dd HH:mm:ss} -> {end:yyyy-MM-dd HH:mm:ss}",
+                    null, resp.StatusCode);
+            }
 
             var (batch, status, count) = ParseResponse(json, _device.Ip);
             events.AddRange(batch);
@@ -77,6 +86,46 @@ public sealed class HikvisionAcsEventClient : IDisposable
         }
 
         return events;
+    }
+
+    /// <summary>
+    /// Pergunta ao terminal a hora do relógio dele (GET /ISAPI/System/time).
+    /// Devolve null se o terminal não responder ou não suportar.
+    /// </summary>
+    public async Task<DateTimeOffset?> GetDeviceTimeAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await _http.GetAsync(_device.BaseUrl + "/ISAPI/System/time", ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            return ParseDeviceTime(await resp.Content.ReadAsStringAsync(ct));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Lê o &lt;localTime&gt; da resposta do /ISAPI/System/time (XML ou JSON).</summary>
+    internal static DateTimeOffset? ParseDeviceTime(string body)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(
+            body ?? "", @"localTime(?:>|""\s*:\s*"")\s*([0-9T:\-+.Z]+)");
+        if (m.Success && DateTimeOffset.TryParse(m.Groups[1].Value,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dto))
+            return dto;
+        return null;
+    }
+
+    private static string Shorten(string text)
+    {
+        var flat = System.Text.RegularExpressions.Regex.Replace(text ?? "", @"\s+", " ").Trim();
+        return flat.Length <= 200 ? flat : flat[..200] + "...";
     }
 
     private static string BuildRequest(DateTimeOffset start, DateTimeOffset end, int position, int maxResults)

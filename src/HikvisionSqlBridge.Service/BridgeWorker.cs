@@ -23,7 +23,7 @@ public sealed class BridgeWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _log.Info("=== Hikvision -> SQL Bridge a arrancar ===");
+        _log.Info("=== Hikvision -> SQL Bridge v0.4.12 a arrancar ===");
 
         var repo = new MovimentoRepository(_config.SqlServer, _log);
 

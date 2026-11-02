@@ -81,6 +81,20 @@ public sealed class MovimentoRepository
         }
     }
 
+    /// <summary>True se já existe uma picagem deste identificador a esta data/hora.</summary>
+    public async Task<bool> ExistsAsync(string idIdentificador, DateTime dataHora, CancellationToken ct = default)
+    {
+        var table = QuoteTable(_cfg.Table);
+        var sql = $"SELECT COUNT(1) FROM {table} WHERE ID_IDENTIFICADOR = @identificador AND ID_DATAHORA = @datahora";
+
+        await using var conn = new SqlConnection(_cfg.BuildConnectionString());
+        await conn.OpenAsync(ct);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add("@identificador", System.Data.SqlDbType.VarChar, 20).Value = idIdentificador;
+        cmd.Parameters.Add("@datahora", System.Data.SqlDbType.DateTime).Value = dataHora;
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct)) > 0;
+    }
+
     private static bool IsDuplicateKey(SqlException ex)
     {
         foreach (SqlError e in ex.Errors)

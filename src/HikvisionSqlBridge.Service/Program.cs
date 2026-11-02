@@ -59,6 +59,13 @@ if (args.Length > 0)
             // Diagnóstico: descobre como este terminal deixa LER as digitais.
             return await RunDiagFingerprint(appConfig, args);
 
+        case "--recuperar":
+            // Recupera para o SQL picagens que ficaram só na memória do terminal.
+            //   --recuperar <de> <ate>          -> só mostra a lista (não grava nada).
+            //   --recuperar <de> <ate> gravar   -> grava as que faltam no SQL.
+            //   ajuste=<serialIni>-<serialFim>:<horas>  (opcional) correcção manual da hora.
+            return await RunRecover(appConfig, args);
+
         case "--config":
             // Abre a janela de configuração gráfica (no browser, servidor local).
             return await ConfigWebApp.RunAsync(configPath);
@@ -354,6 +361,130 @@ static VerifyMethod ParseMethod(string s) => s.ToLowerInvariant() switch
     _ => VerifyMethod.Face,
 };
 
+static async Task<int> RunRecover(AppConfig cfg, string[] args)
+{
+    var log = new ConsoleAppLogger();
+    var fmt = System.Globalization.CultureInfo.InvariantCulture;
+    if (args.Length < 3
+        || !DateTime.TryParseExact(args[1].Trim(), "yyyy-MM-dd", fmt, System.Globalization.DateTimeStyles.None, out var from)
+        || !DateTime.TryParseExact(args[2].Trim(), "yyyy-MM-dd", fmt, System.Globalization.DateTimeStyles.None, out var to))
+    {
+        Console.WriteLine("Uso: SIBHIK.exe --recuperar <de> <ate> [gravar] [ajuste=<serialIni>-<serialFim>:<horas>]");
+        Console.WriteLine("Datas no formato AAAA-MM-DD, na data do relógio do terminal. Ex.: --recuperar 2026-10-26 2026-11-02");
+        return 2;
+    }
+    if (cfg.Equipamentos.Count == 0)
+    {
+        Console.WriteLine("Nenhum terminal configurado na secção Equipamentos.");
+        return 2;
+    }
+
+    var apply = args.Skip(3).Any(a => a.Equals("gravar", StringComparison.OrdinalIgnoreCase));
+    var manual = new List<HikvisionSqlBridge.Core.Hikvision.ManualShift>();
+    foreach (var a in args.Skip(3).Where(a => a.StartsWith("ajuste=", StringComparison.OrdinalIgnoreCase)))
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(a, @"^ajuste=(\d+)-(\d+):([+-]?\d+(?:[.,]\d+)?)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (!m.Success)
+        {
+            Console.WriteLine($"Ajuste inválido: {a}  (formato: ajuste=7859-8045:48)");
+            return 2;
+        }
+        manual.Add(new(long.Parse(m.Groups[1].Value), long.Parse(m.Groups[2].Value),
+            TimeSpan.FromHours(double.Parse(m.Groups[3].Value.Replace(',', '.'), fmt))));
+    }
+
+    Console.WriteLine("SIBHIK v0.4.12 — recuperar picagens que ficaram no terminal");
+    Console.WriteLine(apply
+        ? "Modo: GRAVAR (insere no SQL as picagens que faltam)."
+        : "Modo: VER (só mostra a lista — não grava nada).");
+    Console.WriteLine($"Período (relógio do terminal): {from:yyyy-MM-dd} a {to:yyyy-MM-dd}");
+    Console.WriteLine();
+
+    var repo = new MovimentoRepository(cfg.SqlServer, log);
+    var localOffset = DateTimeOffset.Now.Offset;
+    var start = new DateTimeOffset(from, localOffset);
+    var end = new DateTimeOffset(to.AddDays(1).AddSeconds(-1), localOffset);
+    int totalMissing = 0, totalInserted = 0, totalPresent = 0;
+
+    foreach (var device in cfg.Equipamentos)
+    {
+        Console.WriteLine($"== Terminal {device.DisplayName} ==");
+        using var client = new HikvisionSqlBridge.Core.Hikvision.HikvisionAcsEventClient(device, log);
+
+        var deviceTime = await client.GetDeviceTimeAsync(CancellationToken.None);
+        if (deviceTime is not null)
+            Console.WriteLine($"  Relógio do terminal agora: {deviceTime.Value:yyyy-MM-dd HH:mm:ss}  (PC: {DateTime.Now:yyyy-MM-dd HH:mm:ss})");
+
+        List<AccessEvent> events;
+        try
+        {
+            events = await client.QueryAsync(start, end, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  Falha a ler as picagens do terminal: {ex.Message}");
+            Console.WriteLine();
+            continue;
+        }
+
+        var plan = HikvisionSqlBridge.Core.Hikvision.PunchRecovery.Plan(events, manual, DateTime.Now);
+        Console.WriteLine($"  {plan.Count} picagem(ns) no terminal neste período.");
+        Console.WriteLine();
+        Console.WriteLine("  serial  hora no terminal     hora a gravar        nº     método       estado");
+
+        foreach (var it in plan)
+        {
+            var mov = MovimentoMapper.ToMovimento(it.Event);
+            mov.IdDataHora = it.CorrectedTime;
+
+            string state;
+            if (it.Skip)
+                state = "IGNORADA";
+            else if (await repo.ExistsAsync(mov.IdIdentificador, it.CorrectedTime))
+            {
+                state = "já no SQL";
+                totalPresent++;
+            }
+            else if (it.CorrectedTime != it.TerminalTime && await repo.ExistsAsync(mov.IdIdentificador, it.TerminalTime))
+            {
+                state = "já no SQL (com a hora do terminal)";
+                totalPresent++;
+            }
+            else
+            {
+                totalMissing++;
+                state = "EM FALTA";
+                if (apply)
+                {
+                    try
+                    {
+                        state = await repo.InsertAsync(mov) ? "GRAVADA" : "já no SQL";
+                        if (state == "GRAVADA") totalInserted++;
+                    }
+                    catch (Exception ex)
+                    {
+                        state = "ERRO: " + ex.Message;
+                    }
+                }
+            }
+
+            Console.WriteLine($"  {it.Serial,6}  {it.TerminalTime:yyyy-MM-dd HH:mm:ss}  {it.CorrectedTime:yyyy-MM-dd HH:mm:ss}  " +
+                              $"{mov.IdIdentificador,-6} {it.Event.Method,-12} {state}" +
+                              (it.Note is null ? "" : $"   <- {it.Note}"));
+        }
+        Console.WriteLine();
+    }
+
+    Console.WriteLine("Resumo:");
+    Console.WriteLine($"  Já estavam no SQL: {totalPresent}");
+    Console.WriteLine($"  Em falta:          {totalMissing}");
+    if (apply)
+        Console.WriteLine($"  Gravadas agora:    {totalInserted}");
+    else if (totalMissing > 0)
+        Console.WriteLine("  (Nada foi gravado. Para gravar as que faltam, use o 12-recuperar-gravar.bat.)");
+    return 0;
+}
+
 static void PrintHelp()
 {
     Console.WriteLine("SIBHIK — Hikvision -> SQL Server");
@@ -370,6 +501,8 @@ static void PrintHelp()
     Console.WriteLine("  --nomes-profissionais [todos] Preenche ID_NOME_PROFISSIONAL (1º+último nome) na TG_FUNCIONARIOS.");
     Console.WriteLine("  --renumerar [id|todos]       Tira zeros à esquerda no terminal (00137 -> 137) migrando as biometrias.");
     Console.WriteLine("                               Sem argumento mostra só o plano; <id> migra um; 'todos' migra todos.");
+    Console.WriteLine("  --recuperar <de> <ate> [gravar] Recupera picagens que ficaram só no terminal (datas AAAA-MM-DD).");
+    Console.WriteLine("                               Sem 'gravar' só mostra a lista; corrige a hora se o relógio do terminal saltou.");
     Console.WriteLine("  --config                     Abre a janela de configuração (no browser).");
     Console.WriteLine("  --help                       Mostra esta ajuda.");
 }

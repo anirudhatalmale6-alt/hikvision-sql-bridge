@@ -46,6 +46,13 @@ public sealed class DeviceListener
         long lastSerial = -1;
         var backoff = MinBackoff;
 
+        // Diferença entre o relógio do terminal e o do PC. Se alguém acertar mal a
+        // data no terminal (visto: 2 dias para trás), a janela da consulta tem de
+        // seguir o relógio DO TERMINAL, senão pedimos "o futuro" e ele responde 400
+        // até o relógio dele lá chegar — e as picagens desse tempo ficavam perdidas.
+        var skew = TimeSpan.Zero;
+        var lastSkewCheck = DateTimeOffset.MinValue;
+
         while (!ct.IsCancellationRequested)
         {
             try
@@ -53,9 +60,44 @@ public sealed class DeviceListener
                 using var client = new HikvisionAcsEventClient(_device, _log);
                 var now = DateTimeOffset.Now;
 
+                if (now - lastSkewCheck >= SkewCheckInterval)
+                {
+                    var deviceTime = await client.GetDeviceTimeAsync(ct);
+                    var checkedAt = DateTimeOffset.Now;
+                    if (deviceTime is not null)
+                    {
+                        var newSkew = EffectiveSkew(deviceTime.Value - checkedAt);
+                        // Ignora variações de segundos entre medições (latência da rede).
+                        if ((newSkew - skew).Duration() > TimeSpan.FromMinutes(1))
+                        {
+                            if (newSkew == TimeSpan.Zero)
+                                _log.Warn($"Terminal {_device.DisplayName}: relógio do terminal voltou a estar certo.");
+                            else
+                                _log.Warn($"Terminal {_device.DisplayName}: o relógio do terminal está DESACERTADO " +
+                                          $"({deviceTime.Value:yyyy-MM-dd HH:mm:ss} no terminal, {checkedAt:yyyy-MM-dd HH:mm:ss} no PC). " +
+                                          "As picagens continuam a ser recolhidas e gravadas com a hora certa do PC. " +
+                                          "Acerte a data/hora do terminal (de preferência com NTP).");
+
+                            // Volta a pedir desde a última verificação, já com o novo
+                            // desvio, para não perder o que entrou entretanto
+                            // (o serialNo e a chave do SQL evitam duplicados).
+                            if (lastSkewCheck != DateTimeOffset.MinValue && lastSkewCheck < since)
+                                since = lastSkewCheck;
+                            skew = newSkew;
+                        }
+                    }
+                    lastSkewCheck = checkedAt;
+                }
+
                 // Sobreposição de alguns segundos para não perder picagens na fronteira.
-                var start = since.AddSeconds(-10);
-                var events = await client.QueryAsync(start, now.AddSeconds(5), ct);
+                // A janela vai na hora do terminal (hora do PC + desvio).
+                var start = since + skew - TimeSpan.FromSeconds(10);
+                var events = await client.QueryAsync(start, now + skew + TimeSpan.FromSeconds(5), ct);
+
+                // Com o relógio do terminal desacertado, gravamos a hora real (do PC).
+                if (skew != TimeSpan.Zero)
+                    foreach (var ev in events)
+                        ev.EventTime -= skew;
 
                 // Alguns terminais (visto num Safire) registam a MESMA picagem duas
                 // vezes com a hora deslocada exactamente 1h (bug de fuso/DST no
@@ -85,6 +127,8 @@ public sealed class DeviceListener
             catch (Exception ex)
             {
                 _log.Error($"Terminal {_device.DisplayName}: {ex.Message}. Nova tentativa em {backoff.TotalSeconds:0}s.");
+                // Um erro pode ser o relógio do terminal ter mudado: volta a verificar já.
+                lastSkewCheck = DateTimeOffset.MinValue;
                 try { await Task.Delay(backoff, ct); } catch (OperationCanceledException) { break; }
                 backoff = TimeSpan.FromSeconds(Math.Min(MaxBackoff.TotalSeconds, backoff.TotalSeconds * 2));
                 continue;
@@ -96,6 +140,18 @@ public sealed class DeviceListener
 
         _log.Info($"Listener do terminal {_device.DisplayName} parado.");
     }
+
+    private static readonly TimeSpan SkewCheckInterval = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Só consideramos o relógio do terminal "desacertado" a partir de 2 horas de
+    /// diferença. Abaixo disso (segundos de deriva, ou 1h de fuso/hora de verão mal
+    /// indicada no terminal) mantemos o comportamento de sempre: hora do terminal.
+    /// </summary>
+    internal static TimeSpan EffectiveSkew(TimeSpan measured)
+        => measured.Duration() >= TimeSpan.FromHours(2)
+            ? TimeSpan.FromSeconds(Math.Round(measured.TotalSeconds))
+            : TimeSpan.Zero;
 
     // serialNo é numérico e crescente no Hikvision; usamo-lo para não repetir picagens.
     private static long ParseSerial(string? serial)
