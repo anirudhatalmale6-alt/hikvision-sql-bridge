@@ -393,7 +393,7 @@ static async Task<int> RunRecover(AppConfig cfg, string[] args)
             TimeSpan.FromHours(double.Parse(m.Groups[3].Value.Replace(',', '.'), fmt))));
     }
 
-    Console.WriteLine("SIBHIK v0.4.12 — recuperar picagens que ficaram no terminal");
+    Console.WriteLine("SIBHIK v0.4.13 — recuperar picagens que ficaram no terminal");
     Console.WriteLine(apply
         ? "Modo: GRAVAR (insere no SQL as picagens que faltam)."
         : "Modo: VER (só mostra a lista — não grava nada).");

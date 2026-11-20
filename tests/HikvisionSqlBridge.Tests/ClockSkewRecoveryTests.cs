@@ -80,11 +80,14 @@ public class ClockSkewRecoveryTests
     }
 
     [Theory]
-    [InlineData(-172805, -172805)]   // 2 dias atrás -> corrige
-    [InlineData(3600, 0)]            // 1h (fuso/hora de verão) -> não mexe
-    [InlineData(40, 0)]              // segundos de deriva -> não mexe
-    public void EffectiveSkew_only_kicks_in_from_two_hours(int measuredSeconds, int expectedSeconds)
-        => Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), DeviceListener.EffectiveSkew(TimeSpan.FromSeconds(measuredSeconds)));
+    [InlineData(-172805, true)]      // 2 dias de diferença -> avisa
+    [InlineData(3600, false)]        // 1h (fuso/hora de verão) -> não avisa
+    [InlineData(40, false)]          // segundos de deriva -> não avisa
+    public void ClocksDiffer_only_from_two_hours(int deviceMinusPcSeconds, bool expected)
+    {
+        var pc = DateTimeOffset.Parse("2026-11-20T15:00:00+00:00");
+        Assert.Equal(expected, DeviceListener.ClocksDiffer(pc.AddSeconds(deviceMinusPcSeconds), pc));
+    }
 
     [Fact]
     public void ParseDeviceTime_reads_isapi_xml()
